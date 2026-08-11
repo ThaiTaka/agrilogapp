@@ -148,3 +148,62 @@ def api(db: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Authenticated households
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Tenant:
+    """A registered household plus the headers to act as it."""
+
+    def __init__(self, api: TestClient, data: dict):
+        self._api = api
+        self.token: str = data["access_token"]
+        self.refresh_token: str = data["refresh_token"]
+        self.user_id: str = data["user"]["id"]
+        self.household_id: str = data["household"]["id"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+
+    def get(self, url, **kw):
+        return self._api.get(url, headers=self.headers, **kw)
+
+    def post(self, url, **kw):
+        return self._api.post(url, headers=self.headers, **kw)
+
+    def patch(self, url, **kw):
+        return self._api.patch(url, headers=self.headers, **kw)
+
+    def delete(self, url, **kw):
+        return self._api.delete(url, headers=self.headers, **kw)
+
+
+@pytest.fixture
+def make_tenant(api: TestClient):
+    """Factory for registered households.
+
+    Two independent tenants is the setup every isolation test needs, so it is
+    a factory rather than a single fixture.
+    """
+    counter = {"n": 0}
+
+    def _make(email: str | None = None, household_name: str | None = None) -> Tenant:
+        counter["n"] += 1
+        n = counter["n"]
+        payload = {
+            "email": email or f"ho{n}@agrilog.vn",
+            "password": "matkhau123",
+            "full_name": f"Chủ hộ {n}",
+            "household_name": household_name or f"Hộ số {n}",
+        }
+        r = api.post("/api/v1/auth/register", json=payload)
+        assert r.status_code == 201, r.text
+        return Tenant(api, r.json())
+
+    return _make
+
+
+@pytest.fixture
+def tenant(make_tenant) -> Tenant:
+    return make_tenant()
