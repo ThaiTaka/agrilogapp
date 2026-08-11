@@ -1,0 +1,29 @@
+{
+  "season_name": "Vụ Đông Xuân 2026-2027",
+  "granularity": "month",
+  "buckets": [
+    {
+      "period": "2026-12",
+      "revenue": "0.00",
+      "expense": "2000000.00",
+      "profit": "-2000000.00"
+    },
+    {
+      "period": "2027-01",
+      "revenue": "0.00",
+      "expense": "0.00",
+      "profit": "0.00"
+    },
+    {
+      "period": "2027-02",
+      "revenue": "12000000.00",
+      "expense": "1000000.00",
+      "profit": "11000000.00"
+    }
+  ],
+  "totals": {
+    "revenue": "12000000.00",
+    "expense": "3000000.00",
+    "profit": "9000000.00"
+  }
+}
