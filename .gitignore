@@ -1,0 +1,90 @@
+# ─── Secrets & environment ────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Python / FastAPI backend ─────────────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Local database dumps
+*.sql.bak
+*.dump
+
+# ─── Node / React Native mobile ───────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+.pnpm-debug.log*
+
+# Metro bundler
+.metro-health-check*
+metro.config.js.bak
+
+# React Native / Android
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/.cxx/
+mobile/android/app/release/
+*.keystore
+!debug.keystore
+*.apk
+*.aab
+*.hprof
+
+# React Native / iOS (not targeted, but keeps the tree clean)
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/ios/*.xcworkspace/xcuserdata/
+
+# Local SQLite databases pulled off a device for inspection
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── Editors & OS ─────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# ─── Build & temp artefacts ───────────────────────────────────────────────
+*.log
+tmp/
+temp/
+.cache/

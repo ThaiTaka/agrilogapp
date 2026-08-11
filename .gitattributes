@@ -1,0 +1,16 @@
+# Normalise line endings so a Windows checkout does not show every file as
+# modified, and so CI on Linux sees the same bytes.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF or cmd.exe mis-parses them.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary — never diff, never convert.
+*.docx binary
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.keystore binary
+*.apk  binary

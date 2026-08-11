@@ -1,0 +1,58 @@
+[project]
+name = "agrilog-backend"
+version = "0.1.0"
+description = "AgriLog — offline-first farming diary, inventory and cost tracking API"
+requires-python = ">=3.10"
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  pytest
+# ═══════════════════════════════════════════════════════════════════════════
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["."]
+addopts = "-q --strict-markers --tb=short"
+markers = [
+    "db: test requires a live PostgreSQL test database",
+    "slow: long-running test (load / stress)",
+]
+filterwarnings = ["error::DeprecationWarning:app.*"]
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ruff
+# ═══════════════════════════════════════════════════════════════════════════
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "C4",  # comprehensions
+    "SIM", # simplify
+]
+ignore = [
+    "B008", # FastAPI's Depends() in defaults is the documented idiom
+    "E501", # line length is handled by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+# SQLAlchemy declarative resolves relationship targets from QUOTED forward
+# references at mapper-configuration time. UP037 ("remove quotes") and UP007
+# ("use X | Y") would rewrite `Mapped[Optional["Season"]]` into a form whose
+# target is only imported under TYPE_CHECKING, so it cannot be resolved at
+# runtime. Both rules are false positives for this file pattern.
+"app/models/*" = ["UP007", "UP037"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/seed.py", "*/__init__.py"]
