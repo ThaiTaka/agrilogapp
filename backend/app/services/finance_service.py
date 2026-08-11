@@ -16,13 +16,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.numeric import quantize_money, quantize_quantity
 from app.core.timeutils import now_ms
-from app.models import Expense, StockTransaction
+from app.models import Expense, Revenue, Season, StockTransaction
 from app.models.enums import ExpenseCategory, ExpenseSource, TxnType
+from app.services.errors import Conflict, NotFound
 
 UTC = timezone.utc
 
@@ -129,12 +132,6 @@ def season_totals(db: Session, household_id: uuid.UUID, season_id: str) -> dict:
     is no separate "add supply costs" step and double-counting is structurally
     impossible (invariant I9).
     """
-    from decimal import Decimal
-
-    from sqlalchemy import func
-
-    from app.models import Revenue
-
     cost = db.execute(
         select(func.coalesce(func.sum(Expense.amount), 0)).where(
             Expense.household_id == household_id,
@@ -151,10 +148,391 @@ def season_totals(db: Session, household_id: uuid.UUID, season_id: str) -> dict:
         )
     ).scalar_one()
 
-    cost = Decimal(cost)
-    revenue = Decimal(revenue)
+    cost = quantize_money(cost)
+    revenue = quantize_money(revenue)
     return {
         "total_cost": cost,
         "total_revenue": revenue,
-        "profit": revenue - cost,
+        "profit": quantize_money(revenue - cost),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Expense CRUD (Issue #27)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _require_season(db: Session, household_id: uuid.UUID, season_id: str) -> Season:
+    season = db.execute(
+        select(Season).where(
+            Season.id == season_id,
+            Season.household_id == household_id,
+            Season.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if season is None:
+        raise NotFound("Không tìm thấy mùa vụ.")
+    return season
+
+
+def _live(model, household_id: uuid.UUID):
+    return select(model).where(
+        model.household_id == household_id, model.deleted_at.is_(None)
+    )
+
+
+def get_expense(db: Session, household_id: uuid.UUID, expense_id: str) -> Expense:
+    row = db.execute(
+        _live(Expense, household_id).where(Expense.id == expense_id)
+    ).scalar_one_or_none()
+    if row is None:
+        raise NotFound("Không tìm thấy khoản chi.")
+    return row
+
+
+def _reject_if_auto(expense: Expense) -> None:
+    """Auto-generated costs are read-only (D7).
+
+    Letting a farmer hand-edit a derived number makes the generator and the
+    stored value diverge, with no way to reconcile them at sync time — the
+    next edit to the diary entry would overwrite the manual correction, or
+    not, depending on ordering. Better to refuse and point at the source.
+    """
+    if expense.source == ExpenseSource.DIARY_AUTO.value:
+        raise Conflict(
+            "Khoản chi này được tạo tự động từ nhật ký canh tác nên không sửa "
+            "trực tiếp được. Hãy sửa lượng vật tư trong nhật ký tương ứng."
+        )
+
+
+def list_expenses(
+    db: Session,
+    household_id: uuid.UUID,
+    *,
+    season_id: str | None = None,
+    category: ExpenseCategory | None = None,
+    source: ExpenseSource | None = None,
+    date_from: int | None = None,
+    date_to: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[Expense], int]:
+    stmt = _live(Expense, household_id)
+    if season_id:
+        stmt = stmt.where(Expense.season_id == season_id)
+    if category is not None:
+        stmt = stmt.where(Expense.category == category.value)
+    if source is not None:
+        stmt = stmt.where(Expense.source == source.value)
+    if date_from is not None:
+        stmt = stmt.where(Expense.expense_date >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Expense.expense_date <= date_to)
+
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    rows = (
+        db.execute(
+            stmt.order_by(Expense.expense_date.desc(), Expense.id).limit(limit).offset(offset)
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows), total
+
+
+def create_expense(
+    db: Session,
+    household_id: uuid.UUID,
+    season_id: str,
+    payload,
+    *,
+    device_id: str | None = None,
+) -> Expense:
+    _require_season(db, household_id, season_id)
+
+    expense_id = payload.id or str(uuid.uuid4())
+    if db.execute(select(Expense.id).where(Expense.id == expense_id)).scalar_one_or_none():
+        raise Conflict(f"Khoản chi với id {expense_id} đã tồn tại.")
+
+    ts = now_ms()
+    expense = Expense(
+        id=expense_id,
+        household_id=household_id,
+        season_id=season_id,
+        stock_transaction_id=None,
+        category=payload.category.value,
+        amount=quantize_money(payload.amount),
+        expense_date=payload.expense_date or ts,
+        description=payload.description,
+        # Always 'manual'. Only the diary generator may write 'diary_auto',
+        # and the paired CHECK constraint enforces that a diary_auto row must
+        # carry a stock_transaction_id.
+        source=ExpenseSource.MANUAL.value,
+        created_at=payload.created_at or ts,
+        updated_at=payload.updated_at or ts,
+        last_device_id=device_id,
+    )
+    db.add(expense)
+    db.flush()
+    return expense
+
+
+def update_expense(
+    db: Session,
+    household_id: uuid.UUID,
+    expense_id: str,
+    payload,
+    *,
+    device_id: str | None = None,
+) -> Expense:
+    expense = get_expense(db, household_id, expense_id)
+    _reject_if_auto(expense)
+
+    changes = payload.model_dump(exclude_unset=True, exclude={"updated_at"})
+    if changes.get("season_id") is not None:
+        _require_season(db, household_id, changes["season_id"])
+    if changes.get("category") is not None:
+        changes["category"] = changes["category"].value
+    if changes.get("amount") is not None:
+        changes["amount"] = quantize_money(changes["amount"])
+
+    for field, value in changes.items():
+        setattr(expense, field, value)
+
+    expense.updated_at = payload.updated_at or now_ms()
+    expense.last_device_id = device_id
+    db.flush()
+    return expense
+
+
+def delete_expense(
+    db: Session, household_id: uuid.UUID, expense_id: str, *, device_id: str | None = None
+) -> None:
+    expense = get_expense(db, household_id, expense_id)
+    _reject_if_auto(expense)
+    expense.deleted_at = datetime.now(UTC)
+    expense.updated_at = now_ms()
+    expense.last_device_id = device_id
+    db.flush()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Revenue CRUD
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def get_revenue(db: Session, household_id: uuid.UUID, revenue_id: str) -> Revenue:
+    row = db.execute(
+        _live(Revenue, household_id).where(Revenue.id == revenue_id)
+    ).scalar_one_or_none()
+    if row is None:
+        raise NotFound("Không tìm thấy khoản thu.")
+    return row
+
+
+def list_revenues(
+    db: Session,
+    household_id: uuid.UUID,
+    *,
+    season_id: str | None = None,
+    date_from: int | None = None,
+    date_to: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[Revenue], int]:
+    stmt = _live(Revenue, household_id)
+    if season_id:
+        stmt = stmt.where(Revenue.season_id == season_id)
+    if date_from is not None:
+        stmt = stmt.where(Revenue.revenue_date >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Revenue.revenue_date <= date_to)
+
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    rows = (
+        db.execute(
+            stmt.order_by(Revenue.revenue_date.desc(), Revenue.id).limit(limit).offset(offset)
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows), total
+
+
+def create_revenue(
+    db: Session,
+    household_id: uuid.UUID,
+    season_id: str,
+    payload,
+    *,
+    device_id: str | None = None,
+) -> Revenue:
+    _require_season(db, household_id, season_id)
+
+    revenue_id = payload.id or str(uuid.uuid4())
+    if db.execute(select(Revenue.id).where(Revenue.id == revenue_id)).scalar_one_or_none():
+        raise Conflict(f"Khoản thu với id {revenue_id} đã tồn tại.")
+
+    ts = now_ms()
+    revenue = Revenue(
+        id=revenue_id,
+        household_id=household_id,
+        season_id=season_id,
+        quantity=quantize_quantity(payload.quantity) if payload.quantity is not None else None,
+        unit=payload.unit,
+        unit_price=(
+            quantize_money(payload.unit_price) if payload.unit_price is not None else None
+        ),
+        amount=quantize_money(payload.amount),
+        revenue_date=payload.revenue_date or ts,
+        buyer=payload.buyer,
+        description=payload.description,
+        created_at=payload.created_at or ts,
+        updated_at=payload.updated_at or ts,
+        last_device_id=device_id,
+    )
+    db.add(revenue)
+    db.flush()
+    return revenue
+
+
+def update_revenue(
+    db: Session,
+    household_id: uuid.UUID,
+    revenue_id: str,
+    payload,
+    *,
+    device_id: str | None = None,
+) -> Revenue:
+    revenue = get_revenue(db, household_id, revenue_id)
+    changes = payload.model_dump(exclude_unset=True, exclude={"updated_at"})
+
+    if changes.get("season_id") is not None:
+        _require_season(db, household_id, changes["season_id"])
+    for money_field in ("amount", "unit_price"):
+        if changes.get(money_field) is not None:
+            changes[money_field] = quantize_money(changes[money_field])
+    if changes.get("quantity") is not None:
+        changes["quantity"] = quantize_quantity(changes["quantity"])
+
+    for field, value in changes.items():
+        setattr(revenue, field, value)
+
+    # If the farmer adjusted quantity or price but did not restate the total,
+    # recompute it. An explicit `amount` in the payload always wins — the
+    # number they were actually paid beats the number the arithmetic implies.
+    recompute = (
+        "amount" not in changes
+        and ("quantity" in changes or "unit_price" in changes)
+        and revenue.quantity is not None
+        and revenue.unit_price is not None
+    )
+    if recompute:
+        revenue.amount = quantize_money(revenue.quantity * revenue.unit_price)
+
+    revenue.updated_at = payload.updated_at or now_ms()
+    revenue.last_device_id = device_id
+    db.flush()
+    return revenue
+
+
+def delete_revenue(
+    db: Session, household_id: uuid.UUID, revenue_id: str, *, device_id: str | None = None
+) -> None:
+    revenue = get_revenue(db, household_id, revenue_id)
+    revenue.deleted_at = datetime.now(UTC)
+    revenue.updated_at = now_ms()
+    revenue.last_device_id = device_id
+    db.flush()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Season summary
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def season_summary(db: Session, household_id: uuid.UUID, season_id: str) -> dict:
+    season = _require_season(db, household_id, season_id)
+    totals = season_totals(db, household_id, season_id)
+
+    by_source = dict(
+        db.execute(
+            select(Expense.source, func.coalesce(func.sum(Expense.amount), 0))
+            .where(
+                Expense.household_id == household_id,
+                Expense.season_id == season_id,
+                Expense.deleted_at.is_(None),
+            )
+            .group_by(Expense.source)
+        ).all()
+    )
+
+    by_category = db.execute(
+        select(
+            Expense.category,
+            func.coalesce(func.sum(Expense.amount), 0),
+            func.count(),
+        )
+        .where(
+            Expense.household_id == household_id,
+            Expense.season_id == season_id,
+            Expense.deleted_at.is_(None),
+        )
+        .group_by(Expense.category)
+        .order_by(func.sum(Expense.amount).desc())
+    ).all()
+
+    expense_count = db.execute(
+        select(func.count()).where(
+            Expense.household_id == household_id,
+            Expense.season_id == season_id,
+            Expense.deleted_at.is_(None),
+        )
+    ).scalar_one()
+
+    revenue_count = db.execute(
+        select(func.count()).where(
+            Revenue.household_id == household_id,
+            Revenue.season_id == season_id,
+            Revenue.deleted_at.is_(None),
+        )
+    ).scalar_one()
+
+    total_cost = totals["total_cost"]
+    breakdown = [
+        {
+            "category": category,
+            "amount": quantize_money(amount),
+            "share_pct": (
+                (quantize_money(amount) / total_cost * 100).quantize(Decimal("0.1"))
+                if total_cost > 0
+                else Decimal("0.0")
+            ),
+        }
+        for category, amount, _count in by_category
+    ]
+
+    revenue = totals["total_revenue"]
+    margin = (
+        (totals["profit"] / revenue * 100).quantize(Decimal("0.1"))
+        if revenue > 0
+        else None
+    )
+
+    return {
+        "season_id": season.id,
+        "season_name": season.name,
+        "crop_type": season.crop_type,
+        "status": season.status,
+        "start_date": season.start_date,
+        "end_date": season.end_date,
+        **totals,
+        "margin_pct": margin,
+        "expense_count": expense_count,
+        "revenue_count": revenue_count,
+        "auto_generated_cost": quantize_money(
+            by_source.get(ExpenseSource.DIARY_AUTO.value, 0)
+        ),
+        "manual_cost": quantize_money(by_source.get(ExpenseSource.MANUAL.value, 0)),
+        "cost_by_category": breakdown,
     }
