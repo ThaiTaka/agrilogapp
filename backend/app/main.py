@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app import __version__
+from app.api.deps import DbSession
 from app.core.config import settings
 from app.core.timeutils import now_ms
 from app.db.session import engine
@@ -87,10 +88,13 @@ def _register_health_routes(app: FastAPI) -> None:
         return {"status": "ok", "version": __version__, "server_time_ms": now_ms()}
 
     @app.get("/health/db", tags=["meta"], summary="Readiness probe (database reachable)")
-    def health_db() -> JSONResponse:
+    def health_db(db: DbSession) -> JSONResponse:
+        # Goes through the same `get_db` dependency every route uses, rather
+        # than opening its own connection off the module-level engine. A probe
+        # that exercises a different path than real traffic can report healthy
+        # while every actual request fails.
         try:
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
+            db.execute(text("SELECT 1"))
             return JSONResponse({"status": "ok", "database": "reachable"})
         except Exception as exc:  # noqa: BLE001 - probe must never raise
             logger.error("Database health check failed: %s", exc)
@@ -135,7 +139,9 @@ def _register_v1_routers(app: FastAPI) -> None:
     Routers are added here as each module lands (auth, seasons, diary,
     supplies, finance, reports, sync).
     """
-    return None
+    from app.api.v1 import auth
+
+    app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 
 
 app = create_app()

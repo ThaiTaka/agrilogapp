@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     SYNC_CLOCK_SKEW_TOLERANCE_MS: int = 300_000
     SYNC_MAX_BATCH_RECORDS: int = 5_000
 
+    # The pull endpoint rewinds its cursor by this much before querying.
+    #
+    # A row's server_updated_at is stamped when it is written, but the row only
+    # becomes visible to other transactions when it COMMITS. A transaction that
+    # writes at T5 and commits at T8 is invisible to a pull that runs at T6 and
+    # stores cursor=T6 -- and would then be skipped forever. Rewinding the
+    # cursor by a margin larger than the longest write transaction closes that
+    # window. Re-delivering a row is harmless: the client applies changes as an
+    # upsert keyed on a client-generated ID, so a duplicate pull is a no-op.
+    # The design trades a few redundant rows for the impossibility of a lost one.
+    SYNC_CURSOR_SAFETY_MARGIN_MS: int = 2_000
+
     # ─── Locale ────────────────────────────────────────────────────────────
     # Vietnam is UTC+7 year-round (no DST since 1975). This constant is what
     # makes the generated `*_day_local` columns immutable and therefore

@@ -563,11 +563,27 @@ def upgrade() -> None:
     # cursor becomes a row that is permanently invisible to every device -- the
     # data is present on the server and simply never arrives. Putting it in the
     # database makes that unrepresentable.
+    #
+    # clock_timestamp(), NOT now(). `now()` is transaction_timestamp(): every
+    # statement in a transaction receives the time the transaction STARTED.
+    # For a cursor-based change feed that is a data-loss bug:
+    #
+    #   Txn A  starts T1 ------------- writes ------- commits T6   (stamped T1)
+    #   Txn B      starts T2 - commits T3
+    #   Client pulls at T4, stores cursor = T4
+    #   -> A's rows carry T1 < T4 and are never pulled again.
+    #
+    # clock_timestamp() stamps the row when it is actually written, which
+    # removes the long-transaction case entirely. The residual
+    # commit-order-vs-timestamp-order window is closed by the pull endpoint's
+    # cursor safety margin (SYNC_CURSOR_SAFETY_MARGIN_MS) -- re-pulling a row
+    # is a harmless no-op because the client applies changes as an upsert.
+    #
     op.execute(
         """
         CREATE OR REPLACE FUNCTION touch_server_updated_at() RETURNS trigger AS $$
         BEGIN
-            NEW.server_updated_at := now();
+            NEW.server_updated_at := clock_timestamp();
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;

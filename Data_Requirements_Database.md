@@ -520,13 +520,15 @@ last_device_id     TEXT         NULL              -- who wrote this version (aud
 ```sql
 CREATE OR REPLACE FUNCTION touch_server_updated_at() RETURNS trigger AS $$
 BEGIN
-  NEW.server_updated_at := now();
+  NEW.server_updated_at := clock_timestamp();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 ```
 
 **Why a trigger and not `onupdate=` in SQLAlchemy:** the seed script, a manual `UPDATE` in pgAdmin, and a future admin tool all bypass the ORM. Any write that escapes the ORM without bumping the cursor becomes a row that is permanently invisible to every device — the worst class of sync bug, because the data is present on the server and simply never arrives. Enforcing it in the database makes that unrepresentable.
+
+**Why `clock_timestamp()` and emphatically not `now()`:** `now()` is `transaction_timestamp()` — every statement in a transaction receives the time the *transaction began*. A sync push applies its whole batch in one transaction by design (§6.6), so with `now()` every row in a long push is stamped with a time that may already be behind a cursor another pull has stored — and those rows are then never delivered again. `clock_timestamp()` stamps each row when it is actually written. This was a real defect, caught by a regression test before any client existed; the full analysis is in [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md).
 
 ### 6.2 The client-side sync block
 
@@ -570,13 +572,16 @@ GET /sync/pull?last_pulled_at=<epoch_ms>&schema_version=<int>&migration=<json|nu
 
 Server behaviour:
 
-1. `now_ts := SELECT now()` — captured **once**, at the very start of the request, before any table is read.
+0. `cursor := last_pulled_at − SYNC_CURSOR_SAFETY_MARGIN_MS` (2 000 ms) — see below.
+1. `now_ts := SELECT clock_timestamp()` — captured **once**, at the very start of the request, before any table is read.
 2. For each of the seven synced tables:
    - `created` ← rows where `server_updated_at > cursor AND deleted_at IS NULL AND created_at > cursor`
    - `updated` ← rows where `server_updated_at > cursor AND deleted_at IS NULL AND created_at <= cursor`
    - `deleted` ← **bare id strings** where `server_updated_at > cursor AND deleted_at IS NOT NULL`
 3. Return `{ "changes": {...}, "timestamp": <now_ts as epoch ms> }`.
 4. `last_pulled_at = 0` (or absent) means a full bootstrap: every live row, all in `created`.
+
+**Why the cursor is rewound by a safety margin (step 0):** a row is *stamped* when it is written but only becomes *visible* when its transaction commits. A transaction that writes at T5 and commits at T8 is invisible to a pull running at T6 — which would then store cursor T6 and skip that row forever. Rewinding by more than the longest write transaction closes the window. Re-delivering a row is harmless because the client upserts on a client-generated ID (R1), so a duplicate pull is a no-op. The margin must exceed the duration of the largest push batch; Issue #39's load test measures this and revisits the value.
 
 **Why `now_ts` is captured before reading, not after:** if it were taken at the end, a row committed by another device *during* the read would fall before the returned cursor and never be pulled again. Taking it first means such a row is at worst pulled twice — and since the client applies changes as an upsert, a duplicate pull is a no-op. The design trades a redundant row for the impossibility of a lost one.
 

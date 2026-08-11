@@ -113,6 +113,45 @@ class TestTriggerKeepsPullCursorHonest:
 
         assert after > before, "raw UPDATE did not bump server_updated_at"
 
+    def test_cursor_advances_within_a_single_transaction(self, db, household):
+        """Regression guard: the trigger must use clock_timestamp(), not now().
+
+        `now()` is transaction_timestamp() -- every statement in a transaction
+        gets the time the transaction STARTED. For a cursor-based change feed
+        that is silent data loss:
+
+            Txn A starts T1, writes, commits T6      -> rows stamped T1
+            Txn B starts T2, commits T3
+            Client pulls at T4 and stores cursor T4
+            -> A's rows carry T1 < T4 and are never pulled again.
+
+        Two writes in one transaction must therefore receive *different*
+        timestamps. This test fails if anyone reverts the trigger to now().
+        """
+        for n in (1, 2):
+            db.execute(
+                text(
+                    """
+                    INSERT INTO seasons (id, household_id, name, crop_type, area_unit,
+                                         start_date, status, created_at, updated_at)
+                    VALUES (:id, :hid, :name, 'Lúa', 'sao', 1767225600000, 'active', 1, 1)
+                    """
+                ),
+                {"id": f"t-clock-{n}", "hid": household, "name": f"Vụ {n}"},
+            )
+
+        first, second = db.execute(
+            text(
+                "SELECT server_updated_at FROM seasons "
+                "WHERE id IN ('t-clock-1','t-clock-2') ORDER BY id"
+            )
+        ).scalars().all()
+
+        assert second > first, (
+            "both rows share one timestamp — the trigger is using now() "
+            "(transaction time) instead of clock_timestamp() (statement time)"
+        )
+
 
 class TestGeneratedDayColumns:
     def test_day_column_matches_python_helper(self, db, household):

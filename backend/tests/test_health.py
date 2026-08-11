@@ -36,8 +36,10 @@ class TestHealth:
 
 class TestReadiness:
     @pytest.mark.db
-    def test_db_health_ok_when_reachable(self, client):
-        r = client.get("/health/db")
+    def test_db_health_ok_when_reachable(self, api):
+        # `api`, not `client`: the probe now runs through the `get_db`
+        # dependency, so the test session is what gets exercised.
+        r = api.get("/health/db")
         assert r.status_code == 200
         assert r.json()["database"] == "reachable"
 
