@@ -88,3 +88,6 @@ $RECYCLE.BIN/
 tmp/
 temp/
 .cache/
+
+# Original thesis proposal - kept local, contains student IDs and emails
+Thai_Khoa_DeCuongDeTai.docx
