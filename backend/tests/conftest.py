@@ -166,17 +166,26 @@ class Tenant:
         self.household_id: str = data["household"]["id"]
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
+    def _merge(self, kw: dict) -> dict:
+        """Auth headers, with caller overrides layered on top.
+
+        Callers pass extra headers (X-Device-Id, for the two-device sync
+        tests), so these must merge rather than collide.
+        """
+        kw["headers"] = {**self.headers, **(kw.get("headers") or {})}
+        return kw
+
     def get(self, url, **kw):
-        return self._api.get(url, headers=self.headers, **kw)
+        return self._api.get(url, **self._merge(kw))
 
     def post(self, url, **kw):
-        return self._api.post(url, headers=self.headers, **kw)
+        return self._api.post(url, **self._merge(kw))
 
     def patch(self, url, **kw):
-        return self._api.patch(url, headers=self.headers, **kw)
+        return self._api.patch(url, **self._merge(kw))
 
     def delete(self, url, **kw):
-        return self._api.delete(url, headers=self.headers, **kw)
+        return self._api.delete(url, **self._merge(kw))
 
 
 @pytest.fixture

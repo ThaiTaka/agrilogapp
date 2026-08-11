@@ -139,7 +139,7 @@ def _register_v1_routers(app: FastAPI) -> None:
     Routers are added here as each module lands (auth, seasons, diary,
     supplies, finance, reports, sync).
     """
-    from app.api.v1 import auth, diary, finance, seasons, supplies
+    from app.api.v1 import auth, diary, finance, seasons, supplies, sync
 
     app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
     app.include_router(seasons.router, prefix=settings.API_V1_PREFIX)
@@ -148,6 +148,7 @@ def _register_v1_routers(app: FastAPI) -> None:
     app.include_router(diary.router, prefix=settings.API_V1_PREFIX)
     app.include_router(finance.season_router, prefix=settings.API_V1_PREFIX)
     app.include_router(finance.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(sync.router, prefix=settings.API_V1_PREFIX)
 
 
 app = create_app()
