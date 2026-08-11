@@ -40,7 +40,8 @@ from app.models import (
     User,
 )
 from app.models.enums import SeasonStatus, SupplyCategory
-from app.services import auth_service
+from app.schemas.supply import SupplyCreate
+from app.services import auth_service, supply_service
 
 UTC = timezone.utc
 
@@ -166,18 +167,20 @@ def seed(reset: bool = False) -> int:
                 )
             print(f"  + seasons    {len(SEASONS)}")
 
+            # Through the service, not raw ORM: it is what maintains
+            # `name_key`, and seeding via a parallel path is how a seed script
+            # ends up producing rows the application could never create.
             for name, category, unit, cost, low in SUPPLIES:
-                db.add(
-                    Supply(
-                        household_id=household.id,
+                supply_service.create_supply(
+                    db,
+                    household.id,
+                    SupplyCreate(
                         name=name,
-                        category=category.value,
+                        category=category,
                         unit=unit,
                         unit_cost=cost,
                         low_stock_threshold=low,
-                        created_at=ts,
-                        updated_at=ts,
-                    )
+                    ),
                 )
             print(f"  + supplies   {len(SUPPLIES)}")
         else:

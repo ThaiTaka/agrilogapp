@@ -513,6 +513,7 @@ CI runs lint + tests on every push and PR for both codebases (Issue #18) and is 
 | `Data_Requirements_*.md` | Per-module data model specs, written before each module starts | — |
 | [Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md) | PostgreSQL 18 server service not registered — diagnosis and fix | #13 |
 | [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) | `now()` vs `clock_timestamp()` — a silent data-loss bug in the pull cursor | #9, #32 |
+| [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md) | `lower()` does not lowercase Vietnamese under the `C` collation | #23 |
 | `Error_*.md` | Error description → root cause → exact fix, one file per incident | — |
 
 ---

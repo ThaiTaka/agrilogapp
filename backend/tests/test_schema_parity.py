@@ -53,15 +53,49 @@ def _split_top_level(body: str) -> list[str]:
 
 
 def _parse(sql_text: str) -> tuple[dict[str, set[str]], dict[str, str]]:
+    """Replay the DDL into {table: {column/constraint lines}} and {index: stmt}.
+
+    The migration stream is a *sequence* of statements, not a snapshot: a later
+    revision adds columns and swaps indexes that an earlier one created. The
+    parser therefore has to apply ALTER and DROP too, or every migration after
+    0001 reads as drift against the models.
+    """
     tables: dict[str, set[str]] = {}
     indexes: dict[str, str] = {}
+
     for m in re.finditer(r"CREATE TABLE (\w+)\s*\((.*?)\n\)", sql_text, re.S):
         name = m.group(1)
         if name in IGNORED_TABLES:
             continue
         tables[name] = set(_split_top_level(m.group(2)))
+
+    for m in re.finditer(r"ALTER TABLE (\w+) ADD COLUMN ([^;]+);", sql_text):
+        table = m.group(1)
+        if table in tables:
+            tables[table].add(_normalise(m.group(2)))
+
+    for m in re.finditer(r"ALTER TABLE (\w+) DROP COLUMN (\w+);", sql_text):
+        table, column = m.group(1), m.group(2)
+        tables[table] = {c for c in tables.get(table, set()) if not c.startswith(f"{column} ")}
+
+    # ALTER COLUMN ... SET/DROP NOT NULL — rewrite the recorded line so an
+    # add-nullable-then-backfill-then-tighten sequence matches the model.
+    for m in re.finditer(r"ALTER TABLE (\w+) ALTER COLUMN (\w+) (SET|DROP) NOT NULL;", sql_text):
+        table, column, action = m.group(1), m.group(2), m.group(3)
+        current = tables.get(table, set())
+        for line in list(current):
+            if line.startswith(f"{column} "):
+                current.discard(line)
+                stripped = line.replace(" NOT NULL", "")
+                current.add(f"{stripped} NOT NULL" if action == "SET" else stripped)
+        tables[table] = current
+
     for m in re.finditer(r"CREATE (?:UNIQUE )?INDEX (\w+) ON .*", sql_text):
         indexes[m.group(1)] = _normalise(m.group(0))
+
+    for m in re.finditer(r"DROP INDEX (\w+);", sql_text):
+        indexes.pop(m.group(1), None)
+
     return tables, indexes
 
 

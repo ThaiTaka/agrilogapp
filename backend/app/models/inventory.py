@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Computed,
     ForeignKey,
@@ -58,10 +59,15 @@ class Supply(Base, SyncMixin):
         # NOT bulletproof across a network partition -- two offline devices can
         # each create it and both will sync. That case is resolved manually;
         # see Data_Requirements_Database.md section 8.3 / D5.
+        #
+        # Indexed on `name_key`, NOT on `lower(name)`: PostgreSQL's lower()
+        # folds case per the database collation, and under `C` it leaves every
+        # Vietnamese character alone -- so a lower(name) index accepts
+        # "Đạm Urê" twice. name_key is folded in Python and compared as bytes.
         Index(
-            "uq_supply_name_unit",
+            "uq_supply_key_unit",
             "household_id",
-            text("lower(name)"),
+            "name_key",
             "unit",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
@@ -73,9 +79,20 @@ class Supply(Base, SyncMixin):
             "name",
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        Index(
+            "ix_supplies_active",
+            "household_id",
+            "category",
+            "name",
+            postgresql_where=text("deleted_at IS NULL AND is_archived = false"),
+        ),
     )
 
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    # Case-folded `name`, maintained by SupplyService via
+    # app.core.text.normalise_key. Server-side only -- derived from `name`, so
+    # it never travels in a sync payload.
+    name_key: Mapped[str] = mapped_column(String(160), nullable=False)
     category: Mapped[str] = mapped_column(String(24), nullable=False)
     unit: Mapped[str] = mapped_column(String(16), nullable=False)
     # Current reference price, VND per `unit`. Snapshotted onto each
@@ -85,6 +102,13 @@ class Supply(Base, SyncMixin):
     )
     low_stock_threshold: Mapped[Decimal] = mapped_column(
         Numeric(14, 3), nullable=False, server_default=text("0")
+    )
+    # Hidden from the picker, but NOT deleted: the row keeps syncing so a
+    # device can still render the supply's name on historical transactions.
+    # Tombstoning it instead would make WatermelonDB drop the row locally and
+    # leave last season's diary entries showing a blank supply.
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -396,7 +396,11 @@ The tenant. Created once at registration; a device never edits it.
 
 **Why:** a stored counter has to be mutated by both the server and every offline device, and two devices each decrementing a cached counter while offline produce a number that is simply wrong after sync — with no way to detect it. Deriving from an append-only ledger means the two devices contribute two independent transaction rows, both sync cleanly, and the total is correct by construction. This is the central data-modelling decision of the inventory module. The cost is a `SUM` per read, which §10 indexes for and §11 caches at the UI layer.
 
-**Unique constraint:** `(household_id, lower(name), unit) WHERE deleted_at IS NULL` — prevents "Đạm Urê" being created twice on two devices as two separate inventory lines. Note this is *not* bulletproof across a partition (both devices are offline, both create it, both push); §8.3 documents the merge procedure.
+**Unique constraint:** `(household_id, name_key, unit) WHERE deleted_at IS NULL` — prevents "Đạm Urê" being created twice on one device as two separate inventory lines. Note this is *not* bulletproof across a partition (both devices are offline, both create it, both push); §8.3 documents the merge procedure.
+
+**`name_key`** (`VARCHAR(160) NOT NULL`) is `name` folded by `app.core.text.normalise_key` — NFC normalise, strip, `casefold()`. It exists because **PostgreSQL's `lower()` folds case per the database collation**: under `C`, `lower('Đạm Urê Phú Mỹ')` returns `'Đạm urê phú mỹ'` with the `Đ` untouched, so an index on `lower(name)` cheerfully accepts the same supply twice. Folding in Python and comparing bytes gives the same answer on every cluster regardless of how it was `initdb`'d. `name_key` is derived and server-side only — it never travels in a sync payload. Full analysis: [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md).
+
+**`is_archived`** (`BOOLEAN NOT NULL DEFAULT false`) hides a supply from the picker without tombstoning it — see §8.4 for why deletion is refused once a supply has movement history.
 
 ### 5.6 `stock_transactions` *(sync)*
 
@@ -716,7 +720,8 @@ All FKs between synced tables are declared `DEFERRABLE INITIALLY DEFERRED`.
 | `seasons` | `diary_entries`, `expenses`, `revenues`, `stock_transactions` | Cascade soft delete |
 | `diary_entries` | `stock_transactions` (where `diary_entry_id` set) | Cascade soft delete **+ stock restore** (§9.2) |
 | `stock_transactions` | `expenses` (via `stock_transaction_id`) | Cascade soft delete |
-| `supplies` | `stock_transactions` | **Block.** A supply with movement history cannot be deleted, only archived (`deleted_at` refused, UI offers "ẩn khỏi danh sách"). Deleting it would silently rewrite the cost history of past seasons. |
+| `supplies` | `stock_transactions` | **Block.** A supply with movement history cannot be deleted — the API returns 409 and directs the user to `is_archived` instead. Two reasons, both about *other* devices: a tombstone makes WatermelonDB drop the row locally, so last season's diary entries would render a blank supply name on every device; and the ledger rows carry the prices past seasons were costed at, so removing the catalogue entry they point at rewrites that history. An archived supply keeps syncing normally and keeps its ledger. |
+| `seasons` | `stock_transactions` **without** a `diary_entry_id` | **De-allocate, do not delete.** `season_id` is set to NULL and the row survives. These are real purchases booked against the season; deleting them would erase a transaction that actually happened and silently change the on-hand quantity of a supply the farmer still physically has. The ledger is append-only (D1) — a season being deleted is not a reason to rewrite it. |
 | `households` | everything | Hard `ON DELETE CASCADE` (account closure only; not reachable from the app) |
 
 ---
@@ -827,7 +832,9 @@ Partial indexes (`WHERE deleted_at IS NULL`) are used throughout because every a
 ```sql
 CREATE UNIQUE INDEX uq_expense_per_stock_txn ON expenses (stock_transaction_id)
     WHERE stock_transaction_id IS NOT NULL;
-CREATE UNIQUE INDEX uq_supply_name_unit      ON supplies (household_id, lower(name), unit)
+-- name_key, NOT lower(name): see section 5.5 and
+-- Error_Postgres_Locale_Case_Folding.md
+CREATE UNIQUE INDEX uq_supply_key_unit       ON supplies (household_id, name_key, unit)
     WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_users_email           ON users (email);
 ```
