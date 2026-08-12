@@ -14,10 +14,10 @@ import React from 'react';
 import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 
 import LoginScreen from '../screens/auth/LoginScreen';
+import ReportsScreen from '../screens/reports/ReportsScreen';
 import DiaryStack from './DiaryStack';
 import FinanceStack from './FinanceStack';
 import SuppliesStack from './SuppliesStack';
-import PlaceholderScreen from '../screens/PlaceholderScreen';
 import {useAuth} from '../services/auth';
 import {colors, spacing, typography} from '../theme';
 
@@ -72,21 +72,7 @@ const tabIconRenderers: Record<
 
 // Finance is live (#28) — see FinanceStack.
 
-function ReportsTab() {
-  return (
-    <PlaceholderScreen
-      icon="📊"
-      title="Báo cáo"
-      description="Ba biểu đồ: thu chi theo thời gian, vật tư tiêu thụ, so sánh lợi nhuận giữa các mùa vụ."
-      issues={[
-        '#43 Tích hợp thư viện biểu đồ',
-        '#44 Biểu đồ thu chi',
-        '#45 Biểu đồ vật tư',
-        '#46 Biểu đồ so sánh mùa vụ',
-      ]}
-    />
-  );
-}
+// Reports are live (#43–#47) — see screens/reports/ReportsScreen.
 
 function MainTabs() {
   return (
@@ -119,7 +105,11 @@ function MainTabs() {
         component={FinanceStack}
         options={{title: 'Thu chi', headerShown: false}}
       />
-      <Tab.Screen name="Reports" component={ReportsTab} options={{title: 'Báo cáo'}} />
+      <Tab.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={{title: 'Báo cáo'}}
+      />
     </Tab.Navigator>
   );
 }

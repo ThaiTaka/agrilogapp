@@ -22,7 +22,10 @@ CONSUMPTION = "/api/v1/reports/supply-consumption"
 COMPARISON = "/api/v1/reports/season-comparison"
 
 UTC = timezone.utc
-FIXTURE = Path(__file__).parent / "fixtures" / "reports_golden.json"
+# Lives in docs/, not tests/, because the mobile Jest suite reads the SAME
+# file — same arrangement as docs/sync_contract.json. A fixture buried in one
+# side's test folder is a fixture the other side will quietly stop checking.
+FIXTURE = Path(__file__).resolve().parents[2] / "docs" / "reports_golden.json"
 
 pytestmark = pytest.mark.db
 
