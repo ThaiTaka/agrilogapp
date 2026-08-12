@@ -40,6 +40,10 @@ module.exports = {
   setupFiles: ['<rootDir>/jest.setup.js'],
   transformIgnorePatterns: [`node_modules/(?!(?:${esmPackages})/)`],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  // Only *.test.* files are suites. The default pattern also treats
+  // EVERYTHING under __tests__/ as a suite, which makes Jest fail on shared
+  // helpers like testDatabase.ts for containing no tests.
+  testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/__tests__/**',
