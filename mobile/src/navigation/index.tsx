@@ -15,6 +15,7 @@ import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 
 import LoginScreen from '../screens/auth/LoginScreen';
 import DiaryStack from './DiaryStack';
+import FinanceStack from './FinanceStack';
 import SuppliesStack from './SuppliesStack';
 import PlaceholderScreen from '../screens/PlaceholderScreen';
 import {useAuth} from '../services/auth';
@@ -69,16 +70,7 @@ const tabIconRenderers: Record<
 
 // Supplies is live (#24) — see SuppliesStack.
 
-function FinanceTab() {
-  return (
-    <PlaceholderScreen
-      icon="💰"
-      title="Thu chi"
-      description="Chi phí và doanh thu theo mùa vụ. Chi phí vật tư tự sinh từ nhật ký, không phải nhập tay hai lần."
-      issues={['#28 Màn hình thu chi và tổng kết mùa vụ']}
-    />
-  );
-}
+// Finance is live (#28) — see FinanceStack.
 
 function ReportsTab() {
   return (
@@ -122,7 +114,11 @@ function MainTabs() {
         component={SuppliesStack}
         options={{title: 'Vật tư', headerShown: false}}
       />
-      <Tab.Screen name="Finance" component={FinanceTab} options={{title: 'Thu chi'}} />
+      <Tab.Screen
+        name="Finance"
+        component={FinanceStack}
+        options={{title: 'Thu chi', headerShown: false}}
+      />
       <Tab.Screen name="Reports" component={ReportsTab} options={{title: 'Báo cáo'}} />
     </Tab.Navigator>
   );
