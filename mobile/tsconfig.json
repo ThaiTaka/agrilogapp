@@ -1,0 +1,16 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    // Required by WatermelonDB's decorator-based models.
+    "experimentalDecorators": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    // No `baseUrl` — deprecated in TypeScript 6. Paths resolve relative to
+    // this file, which is what we want anyway.
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods", "**/android", "**/ios"]
+}
