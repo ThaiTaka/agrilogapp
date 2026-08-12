@@ -15,6 +15,7 @@ import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 
 import LoginScreen from '../screens/auth/LoginScreen';
 import DiaryStack from './DiaryStack';
+import SuppliesStack from './SuppliesStack';
 import PlaceholderScreen from '../screens/PlaceholderScreen';
 import {useAuth} from '../services/auth';
 import {colors, spacing, typography} from '../theme';
@@ -66,16 +67,7 @@ const tabIconRenderers: Record<
 
 // Season management is live (#20). Diary entry screens (#22) nest inside it.
 
-function SuppliesTab() {
-  return (
-    <PlaceholderScreen
-      icon="📦"
-      title="Vật tư"
-      description="Danh mục vật tư, nhập kho, xuất kho và tồn kho thời gian thực — tính từ sổ cái, không lưu sẵn."
-      issues={['#24 Màn hình kho vật tư']}
-    />
-  );
-}
+// Supplies is live (#24) — see SuppliesStack.
 
 function FinanceTab() {
   return (
@@ -125,7 +117,11 @@ function MainTabs() {
         // The stack draws its own header, so the tab navigator must not.
         options={{title: 'Nhật ký', headerShown: false}}
       />
-      <Tab.Screen name="Supplies" component={SuppliesTab} options={{title: 'Vật tư'}} />
+      <Tab.Screen
+        name="Supplies"
+        component={SuppliesStack}
+        options={{title: 'Vật tư', headerShown: false}}
+      />
       <Tab.Screen name="Finance" component={FinanceTab} options={{title: 'Thu chi'}} />
       <Tab.Screen name="Reports" component={ReportsTab} options={{title: 'Báo cáo'}} />
     </Tab.Navigator>
