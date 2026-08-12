@@ -1,76 +1,75 @@
 # AgriLog
 
 > **Ứng dụng quản lý nhật ký canh tác cây ngắn ngày, vật tư và chi phí nông nghiệp cho nông hộ**
-> An offline-first mobile application that lets smallholder farming households log daily field work, track agricultural supply inventory, and measure cost / revenue / profit per crop season — with **full functionality while completely offline** and **automatic two-way synchronisation** when connectivity returns.
+> Ứng dụng di động ưu tiên ngoại tuyến (offline-first), giúp nông hộ ghi nhật ký công việc đồng ruộng, theo dõi tồn kho vật tư và tính chi phí / doanh thu / lợi nhuận theo từng mùa vụ — **hoạt động đầy đủ khi mất mạng hoàn toàn** và **tự động đồng bộ hai chiều** khi có kết nối trở lại.
 
-Graduation project — Faculty of Information Technology, Đà Lạt University (Trường Đại học Đà Lạt).
-Advisor: **TS. Nguyễn Thị Lương** · Defense window: **13 – 15 Nov 2026**
-
----
-
-## Table of Contents
-
-1. [The Problem](#1-the-problem)
-2. [Objectives & Feature Map](#2-objectives--feature-map)
-3. [Architecture Overview](#3-architecture-overview)
-4. [Technology Stack](#4-technology-stack)
-5. [Repository Structure](#5-repository-structure)
-6. [Prerequisites](#6-prerequisites)
-7. [Backend Setup (FastAPI + PostgreSQL)](#7-backend-setup-fastapi--postgresql)
-8. [Mobile Setup (React Native + WatermelonDB)](#8-mobile-setup-react-native--watermelondb)
-9. [How Offline-First Sync Works](#9-how-offline-first-sync-works)
-10. [Reports & Visualisation](#10-reports--visualisation)
-11. [Project Roadmap (Milestones)](#11-project-roadmap-milestones)
-12. [Branching Strategy & Workflow](#12-branching-strategy--workflow)
-13. [Testing Strategy](#13-testing-strategy)
-14. [Documentation Index](#14-documentation-index)
-15. [AI Contribution Statement](#15-ai-contribution-statement)
-16. [Author](#16-author)
-17. [Getting This README onto GitHub](#17-getting-this-readme-onto-github)
+Đồ án tốt nghiệp — Khoa Công nghệ Thông tin, Trường Đại học Đà Lạt.
+Giáo viên hướng dẫn: **TS. Nguyễn Thị Lương** · Bảo vệ: **13 – 15/11/2026**
 
 ---
 
-## 1. The Problem
+## Mục lục
 
-Short-cycle crop farming (cây ngắn ngày) is the primary, recurring income source for the majority of Vietnamese farming households. Yet record-keeping is still done manually or in scattered notebooks, which causes three concrete losses:
+1. [Vấn đề thực tiễn](#1-vấn-đề-thực-tiễn)
+2. [Mục tiêu và bản đồ chức năng](#2-mục-tiêu-và-bản-đồ-chức-năng)
+3. [Kiến trúc tổng thể](#3-kiến-trúc-tổng-thể)
+4. [Công nghệ sử dụng](#4-công-nghệ-sử-dụng)
+5. [Cấu trúc thư mục](#5-cấu-trúc-thư-mục)
+6. [Yêu cầu môi trường](#6-yêu-cầu-môi-trường)
+7. [Cài đặt Backend](#7-cài-đặt-backend-fastapi--postgresql)
+8. [Cài đặt Mobile](#8-cài-đặt-mobile-react-native--watermelondb)
+9. [Cơ chế đồng bộ offline-first](#9-cơ-chế-đồng-bộ-offline-first)
+10. [Báo cáo và trực quan hóa](#10-báo-cáo-và-trực-quan-hóa)
+11. [Lộ trình thực hiện](#11-lộ-trình-thực-hiện)
+12. [Quy ước nhánh và commit](#12-quy-ước-nhánh-và-commit)
+13. [Chiến lược kiểm thử](#13-chiến-lược-kiểm-thử)
+14. [Danh mục tài liệu](#14-danh-mục-tài-liệu)
+15. [Tuyên bố về đóng góp của AI](#15-tuyên-bố-về-đóng-góp-của-ai)
+16. [Tác giả](#16-tác-giả)
 
-| Problem | Consequence |
+---
+
+## 1. Vấn đề thực tiễn
+
+Trồng cây ngắn ngày là nguồn thu nhập chính và thường xuyên của phần lớn nông hộ Việt Nam. Nhưng việc ghi chép hiện vẫn làm thủ công hoặc rời rạc, dẫn tới ba tổn thất cụ thể:
+
+| Vấn đề | Hậu quả |
 |---|---|
-| Work logs are handwritten or not kept at all | No traceable history of fertilising / spraying / harvesting |
-| Supply usage is never reconciled against stock | Silent inventory shrinkage, unplanned re-purchasing |
-| Costs and revenue are never tied to a season | Impossible to know whether a season was actually profitable |
+| Nhật ký công việc ghi tay hoặc không ghi | Không truy được lịch sử bón phân / phun thuốc / thu hoạch |
+| Vật tư dùng không đối chiếu với tồn kho | Thất thoát âm thầm, mua lại ngoài kế hoạch |
+| Chi phí và doanh thu không gắn với mùa vụ | Không biết vụ đó thực sự có lãi hay không |
 
-**And the hard constraint:** the field is where the data is created, and the field usually has no stable mobile signal. Any solution that *requires* a network connection to record data will simply not be used — entry gets deferred to the evening, and deferred entry is inaccurate entry.
+**Và ràng buộc cứng:** dữ liệu phát sinh ngoài đồng ruộng, mà ngoài đồng thường không có sóng ổn định. Bất kỳ giải pháp nào *bắt buộc* phải có mạng mới ghi được thì đơn giản là sẽ không được dùng — việc ghi bị dời tới tối, mà ghi trễ là ghi sai.
 
-AgriLog therefore treats the **local device database as the source of truth for writing**, and the server as a durable, shareable mirror that reconciles later.
+AgriLog vì vậy coi **cơ sở dữ liệu trên máy là nguồn sự thật khi ghi**, còn máy chủ là bản sao bền vững, dùng chung, đối chiếu lại sau.
 
 ---
 
-## 2. Objectives & Feature Map
+## 2. Mục tiêu và bản đồ chức năng
 
-The five objectives from the project proposal (Mục tiêu đề tài), mapped to what the app delivers:
+Năm mục tiêu trong đề cương, ánh xạ sang chức năng thực tế:
 
-| # | Objective (proposal) | Delivered feature |
+| # | Mục tiêu (đề cương) | Chức năng đã xây dựng |
 |---|---|---|
-| 1 | Quản lý nhật ký canh tác theo mùa vụ | Season CRUD + diary entries typed by work kind (bón phân / phun thuốc / thu hoạch / khác), filterable by season and work type |
-| 2 | Quản lý vật tư (nhập – xuất – tồn kho thời gian thực) | Supply catalogue, stock-in / stock-out transactions, live computed on-hand level, low-stock flagging |
-| 3 | Quản lý thu chi, tự động tính lợi nhuận theo mùa vụ | Expense & revenue records, auto-generated expense when a diary entry consumes supplies, per-season cost / revenue / profit summary |
-| 4 | Hoạt động đầy đủ khi mất mạng + đồng bộ hai chiều chính xác | 100 % of CRUD runs against local SQLite; WatermelonDB `synchronize()` against a FastAPI push/pull contract with dedup + conflict resolution |
-| 5 | Trực quan hóa báo cáo hỗ trợ ra quyết định | 3 charts: Income vs Expense over time, Supply Consumption by type, Season Profit Comparison |
+| 1 | Quản lý nhật ký canh tác theo mùa vụ | CRUD mùa vụ + nhật ký phân loại theo công việc (bón phân / phun thuốc / thu hoạch / khác), lọc theo mùa vụ và loại việc |
+| 2 | Quản lý vật tư (nhập – xuất – tồn kho thời gian thực) | Danh mục vật tư, giao dịch nhập/xuất, tồn kho tính động, cảnh báo sắp hết |
+| 3 | Quản lý thu chi, tự động tính lợi nhuận theo mùa vụ | Ghi chi phí & doanh thu, **tự sinh chi phí** khi nhật ký dùng vật tư, tổng kết chi/thu/lãi từng vụ |
+| 4 | Hoạt động đầy đủ khi mất mạng + đồng bộ hai chiều chính xác | 100% thao tác CRUD chạy trên SQLite cục bộ; `synchronize()` của WatermelonDB nối vào contract push/pull của FastAPI, có chống trùng và giải quyết xung đột |
+| 5 | Trực quan hóa báo cáo hỗ trợ ra quyết định | 3 biểu đồ: Thu–Chi theo thời gian, Vật tư tiêu thụ, So sánh lợi nhuận giữa các mùa vụ |
 
-**Plus the explicit content requirement from §3 of the proposal:** *tự động hoàn kho khi sửa/xóa nhật ký* — when a diary entry that consumed supplies is edited or deleted, the consumed stock is automatically reversed/adjusted. This is implemented **twice and symmetrically**: once in the FastAPI service layer, once in the WatermelonDB writer layer, so the inventory number is correct whether the edit happened online or in airplane mode.
+**Cộng thêm yêu cầu ở §3 đề cương:** *tự động hoàn kho khi sửa/xóa nhật ký*. Khi một nhật ký đã tiêu thụ vật tư bị sửa hoặc xoá, lượng vật tư đó được hoàn lại kho tự động. Logic này được cài đặt **hai lần và đối xứng** — một lần trong tầng service của FastAPI, một lần trong tầng writer của WatermelonDB — để con số tồn kho luôn đúng dù thao tác xảy ra khi online hay ở chế độ máy bay.
 
 ---
 
-## 3. Architecture Overview
+## 3. Kiến trúc tổng thể
 
 ```mermaid
 graph TB
-    subgraph Device["📱 Android Device (works with zero connectivity)"]
-        UI["React Native UI<br/>Diary · Supplies · Finance · Reports"]
-        HOOKS["Observable queries<br/>(withObservables)"]
-        WDB["WatermelonDB<br/>Model + Query layer"]
-        SQLITE[("SQLite<br/>local source of truth")]
+    subgraph Device["📱 Thiết bị Android (chạy được khi không có mạng)"]
+        UI["Giao diện React Native<br/>Nhật ký · Vật tư · Thu chi · Báo cáo"]
+        HOOKS["Truy vấn observable<br/>(withObservables)"]
+        WDB["WatermelonDB<br/>tầng Model + Query"]
+        SQLITE[("SQLite<br/>nguồn sự thật cục bộ")]
         SYNC["Sync Adapter<br/>synchronize()"]
 
         UI <--> HOOKS
@@ -79,15 +78,15 @@ graph TB
         WDB <--> SYNC
     end
 
-    NET{{"🌐 Intermittent<br/>connectivity"}}
-    SYNC <-.->|"push / pull batches"| NET
+    NET{{"🌐 Kết nối<br/>chập chờn"}}
+    SYNC <-.->|"push / pull theo lô"| NET
 
-    subgraph Server["☁️ Backend"]
+    subgraph Server["☁️ Máy chủ"]
         API["FastAPI<br/>REST + Sync API"]
-        AUTH["JWT auth<br/>household scoping"]
-        SVC["Service layer<br/>stock restore · financial rollups"]
-        ORM["SQLAlchemy 2.0 ORM<br/>+ Alembic migrations"]
-        PG[("PostgreSQL<br/>durable system of record")]
+        AUTH["JWT<br/>phân vùng theo nông hộ"]
+        SVC["Tầng nghiệp vụ<br/>hoàn kho · tổng hợp tài chính"]
+        ORM["SQLAlchemy 2.0<br/>+ Alembic migration"]
+        PG[("PostgreSQL<br/>hệ thống lưu trữ chính")]
 
         API --> AUTH
         API --> SVC
@@ -98,277 +97,255 @@ graph TB
     NET <-.-> API
 ```
 
-### Design principles
+### Năm nguyên tắc thiết kế
 
-1. **Local-first writes.** No screen ever blocks on the network. Every create/update/delete commits to SQLite inside a WatermelonDB `writer` and returns immediately; the UI re-renders from an observable query, not from an HTTP response.
-2. **The server never invents IDs.** Record IDs are generated on the client. This is what makes retrying a sync safe: re-sending a batch cannot produce duplicates because the primary key already exists.
-3. **Schema parity.** The WatermelonDB schema mirrors the PostgreSQL schema table-for-table and field-for-field. Divergence is the #1 source of sync bugs, so any intentional difference (e.g. local denormalisation for fast list queries) must be recorded in `docs/database-schema.md`.
-4. **Symmetric business logic.** Stock restore and expense auto-generation exist on both sides and must produce identical numbers. Any asymmetry surfaces as data drift after a sync.
-5. **Server clock is the sync clock.** Sync cursors use the PostgreSQL server's time, never the device clock — a farmer's phone with a wrong date must not be able to poison the change feed.
+1. **Ghi luôn ưu tiên cục bộ.** Không màn hình nào chờ mạng. Mọi thao tác tạo/sửa/xoá đều commit vào SQLite trong một `writer` của WatermelonDB rồi trả về ngay; giao diện vẽ lại từ truy vấn observable, không phải từ response HTTP.
+2. **Máy chủ không bao giờ tự sinh ID.** ID bản ghi được sinh trên thiết bị. Đây chính là điều làm cho việc thử lại đồng bộ trở nên an toàn: gửi lại một lô không thể tạo bản ghi trùng vì khoá chính đã tồn tại.
+3. **Schema phải song song.** Schema WatermelonDB phản chiếu schema PostgreSQL từng bảng, từng trường. Lệch nhau là nguyên nhân số một gây lỗi đồng bộ, nên mọi khác biệt cố ý phải được ghi lại trong `Data_Requirements_Database.md`.
+4. **Nghiệp vụ đối xứng.** Hoàn kho và tự sinh chi phí tồn tại ở cả hai phía và phải cho ra con số giống hệt nhau. Bất kỳ bất đối xứng nào cũng sẽ lộ ra thành lệch dữ liệu sau khi đồng bộ.
+5. **Đồng hồ máy chủ là đồng hồ đồng bộ.** Con trỏ đồng bộ dùng giờ của PostgreSQL, không bao giờ dùng giờ thiết bị — điện thoại của nông dân bị sai ngày không được phép làm hỏng luồng thay đổi.
 
 ---
 
-## 4. Technology Stack
+## 4. Công nghệ sử dụng
 
-| Layer | Choice | One-line reason |
+| Tầng | Lựa chọn | Lý do ngắn gọn |
 |---|---|---|
-| Mobile framework | **React Native** (CLI, not Expo) | Needs native SQLite/JSI modules that Expo Go cannot load |
-| Local database | **WatermelonDB** | The only RN persistence layer with a *built-in* two-way sync protocol and record-level change tracking |
-| Local storage engine | **SQLite** (via WatermelonDB adapter) | Durable, transactional, ships with Android |
-| Charts | **react-native-chart-kit** + react-native-svg | Covers all 3 required chart types, tiny API surface |
-| Backend framework | **FastAPI** | Async, auto-generates the OpenAPI spec that documents the sync contract |
-| ORM | **SQLAlchemy 2.0** | Explicit control over the transaction boundary the sync push handler needs |
-| Migrations | **Alembic** | Versioned schema — required to keep the mobile schema version and server schema in lockstep |
-| Database | **PostgreSQL** | Transactional integrity for batched sync writes; strong aggregate query support for reports |
-| Auth | **JWT** (PyJWT) + **bcrypt** (called directly) | Stateless tokens work naturally with an intermittently-connected client |
+| Framework mobile | **React Native** (CLI, không dùng Expo) | Cần module SQLite/JSI native mà Expo Go không nạp được |
+| CSDL cục bộ | **WatermelonDB** | Thư viện lưu trữ RN duy nhất có *sẵn* giao thức đồng bộ hai chiều và theo dõi thay đổi ở mức bản ghi |
+| Engine lưu trữ | **SQLite** (qua adapter WatermelonDB) | Bền vững, có transaction, có sẵn trên Android |
+| Biểu đồ | **react-native-chart-kit** + react-native-svg | Đủ cả 3 loại biểu đồ yêu cầu, API gọn |
+| Framework backend | **FastAPI** | Bất đồng bộ, tự sinh OpenAPI để làm tài liệu cho contract đồng bộ |
+| ORM | **SQLAlchemy 2.0** | Kiểm soát rõ ràng ranh giới transaction mà sync push cần |
+| Migration | **Alembic** | Schema có phiên bản — bắt buộc để giữ schema mobile và server đi cùng nhịp |
+| CSDL | **PostgreSQL** | Toàn vẹn giao dịch cho ghi theo lô; truy vấn tổng hợp mạnh cho báo cáo |
+| Xác thực | **JWT** (PyJWT) + **bcrypt** (gọi trực tiếp) | Token không trạng thái phù hợp với client kết nối chập chờn |
 
-> **Two deliberate substitutions inside the auth layer**, both made during implementation:
-> - **PyJWT instead of python-jose.** python-jose has been effectively unmaintained since 2021; PyJWT is the actively maintained reference implementation.
-> - **bcrypt called directly instead of via passlib.** passlib 1.7.4 reads `bcrypt.__about__.__version__`, which bcrypt 4.x removed — producing a noisy `AttributeError` traceback on every single hash. Calling bcrypt directly is a smaller dependency surface and sidesteps a known-broken interaction. The cost is handling bcrypt's 72-byte input limit ourselves, which `app/core/security.py` does explicitly rather than letting it truncate silently (see the test `test_diacritics_count_as_multiple_bytes` — a 40-character Vietnamese password is 120 bytes).
+> ⚠️ **Khác đề cương gốc một cách có chủ đích.** Đề cương liệt kê Drift ORM (Flutter/Dart), fl_chart (Flutter) và "Prisma Schema" (ORM Node.js) — không thứ nào chạy được trong ngăn xếp React Native + FastAPI. Lý do thay thế được ghi trong `docs/adr/0001-tech-stack.md` (Issue #11).
 
-> ⚠️ **This differs from the original proposal on purpose.** The proposal listed Drift ORM (Flutter/Dart), fl_chart (Flutter), and "Prisma Schema" (Node.js ORM) — none of which run in a React Native + FastAPI stack. The substitutions and their rationale are documented in **[Tech_Stack_Overview.md](Tech_Stack_Overview.md)** and formalised as an ADR in `docs/adr/0001-tech-stack.md` (Issue #11).
+**Hai thay thế bên trong tầng xác thực**, quyết định trong lúc cài đặt:
+
+- **PyJWT thay python-jose.** python-jose gần như không còn được bảo trì từ 2021; PyJWT là bản tham chiếu đang được duy trì.
+- **Gọi bcrypt trực tiếp thay vì qua passlib.** passlib 1.7.4 đọc `bcrypt.__about__.__version__` — thuộc tính mà bcrypt 4.x đã bỏ — nên mỗi lần băm mật khẩu lại in ra một `AttributeError` ồn ào. Gọi thẳng bcrypt giảm phụ thuộc và tránh hẳn một tương tác đã biết là hỏng. Cái giá là phải tự xử lý giới hạn 72 **byte** của bcrypt, và `app/core/security.py` xử lý tường minh thay vì để nó cắt bớt âm thầm (xem test `test_diacritics_count_as_multiple_bytes` — mật khẩu tiếng Việt 40 ký tự là 120 byte).
 
 ---
 
-## 5. Repository Structure
+## 5. Cấu trúc thư mục
 
 ```
 agrilogapp/
-├── backend/                       # FastAPI service
+├── backend/                       # Dịch vụ FastAPI
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── deps.py            # DB session + current_household dependencies
+│   │   │   ├── deps.py            # session DB + current_household
 │   │   │   └── v1/
-│   │   │       ├── auth.py        # register / login          (Issue #14)
-│   │   │       ├── seasons.py     # season CRUD               (Issue #19)
-│   │   │       ├── diary.py       # diary entry CRUD          (Issue #21)
-│   │   │       ├── supplies.py    # supplies + stock moves    (Issue #23)
-│   │   │       ├── finance.py     # expenses / revenues       (Issue #27)
-│   │   │       ├── reports.py     # 3 aggregation endpoints   (Issue #42)
-│   │   │       └── sync.py        # push / pull               (Issues #31, #32)
+│   │   │       ├── auth.py        # đăng ký / đăng nhập        (#14)
+│   │   │       ├── seasons.py     # CRUD mùa vụ                (#19)
+│   │   │       ├── diary.py       # CRUD nhật ký               (#21, #25, #29)
+│   │   │       ├── supplies.py    # vật tư + sổ kho            (#23)
+│   │   │       ├── finance.py     # thu / chi / tổng kết       (#27)
+│   │   │       ├── reports.py     # 3 endpoint tổng hợp        (#42)
+│   │   │       └── sync.py        # push / pull                (#31, #32, #33)
 │   │   ├── core/
-│   │   │   ├── config.py          # pydantic-settings, reads .env
-│   │   │   └── security.py        # hashing + JWT issue/verify
+│   │   │   ├── config.py          # pydantic-settings, đọc .env
+│   │   │   ├── security.py        # băm mật khẩu + JWT
+│   │   │   ├── numeric.py         # hợp đồng làm tròn Decimal
+│   │   │   ├── text.py            # chuẩn hoá chữ không phụ thuộc locale
+│   │   │   └── timeutils.py       # epoch-ms, ngày địa phương, kẹp lệch đồng hồ
 │   │   ├── db/
-│   │   │   ├── base.py            # declarative Base + SyncMixin
+│   │   │   ├── base.py            # Base + SyncMixin
 │   │   │   └── session.py         # engine + SessionLocal
-│   │   ├── models/                # SQLAlchemy ORM models     (Issue #7)
-│   │   ├── schemas/               # Pydantic request/response models
-│   │   ├── services/              # business logic: stock restore, rollups, sync
-│   │   └── main.py                # app factory, /health, router wiring
-│   ├── alembic/versions/          # migration history
-│   ├── tests/                     # pytest suite
-│   ├── alembic.ini
-│   ├── requirements.txt
-│   └── .env.example
+│   │   ├── models/                # 11 model SQLAlchemy         (#7)
+│   │   ├── schemas/               # Pydantic request/response
+│   │   ├── services/              # nghiệp vụ: hoàn kho, tổng hợp, sync
+│   │   ├── seed.py                # dữ liệu mẫu cho môi trường dev
+│   │   └── main.py                # app factory, /health, gắn router
+│   ├── alembic/versions/          # lịch sử migration (0001, 0002)
+│   ├── scripts/setup_db.ps1       # tạo role + database
+│   ├── tests/                     # 345 test pytest
+│   └── requirements.txt
 │
-├── mobile/                        # React Native app
-│   ├── src/
-│   │   ├── db/
-│   │   │   ├── schema.ts          # WatermelonDB tableSchemas (Issue #8)
-│   │   │   ├── migrations.ts      # schemaMigrations
-│   │   │   ├── models/            # Model classes with decorators
-│   │   │   └── index.ts           # Database + SQLiteAdapter singleton
-│   │   ├── navigation/            # root stack + bottom tabs   (Issue #17)
-│   │   ├── screens/
-│   │   │   ├── auth/  seasons/  diary/  supplies/  finance/  reports/
-│   │   ├── components/            # shared UI (SyncStatusBar, EmptyState, …)
-│   │   ├── services/
-│   │   │   ├── api.ts             # fetch wrapper + JWT header
-│   │   │   ├── sync.ts            # synchronize() adapter      (Issue #34)
-│   │   │   └── stock.ts           # local stock-restore logic  (Issue #26)
-│   │   └── hooks/
-│   ├── android/
-│   └── package.json
+├── mobile/                        # Ứng dụng React Native
+│   └── (xem Mục 8)
 │
-├── docs/                          # design & thesis artefacts
-│   ├── requirements.md            erd.png              database-schema.md
-│   ├── sync-api.md                tech-stack.md        qa-checklist.md
-│   └── adr/0001-tech-stack.md
-│
-├── .github/workflows/             # backend-ci.yml, mobile-ci.yml (Issue #18)
-├── AgriLog_GitHub_Issues_and_Kanban.md   # 55 issues, 11 milestones
-├── Tech_Stack_Overview.md
+├── docs/                          # Tài liệu thiết kế
+├── Data_Requirements_Database.md  # Mô hình dữ liệu — tài liệu gốc
+├── Error_*.md                     # Nhật ký sự cố: mô tả → nguyên nhân → cách sửa
 └── README.md
 ```
 
 ---
 
-## 6. Prerequisites
+## 6. Yêu cầu môi trường
 
-Already installed on the development machine — listed here for reproducibility:
-
-| Tool | Verified version | Notes |
+| Công cụ | Phiên bản đã kiểm chứng | Ghi chú |
 |---|---|---|
-| Python | 3.12.10 | 3.10+ required |
-| PostgreSQL Server | 18 (verified) | 13+ required for built-in `gen_random_uuid()`; plus pgAdmin 4 |
-| Node.js | 24.18.0 | 20+ required by current React Native |
+| Python | 3.12.10 | Cần 3.10 trở lên |
+| PostgreSQL Server | 18 | Cần 13+ để có sẵn `gen_random_uuid()`; kèm pgAdmin 4 |
+| Node.js | 24.18.0 | React Native cần 20+ |
 | npm | 11.16.0 | |
-| Android Studio | latest | with an AVD + Android SDK Platform 34/35 |
+| Android Studio | mới nhất | kèm AVD và Android SDK Platform 34/35 |
 | Git | 2.54.0 | |
-| JDK | 17 | bundled with Android Studio |
+| JDK | 17 | đi kèm Android Studio |
 
-> **Note on Node 24:** React Native's supported range moves slower than Node's release cadence. If `npx react-native` throws an engine/`ERR_REQUIRE_ESM` error during Issue #15, install Node 20 LTS alongside via `nvm-windows` and pin it for the `mobile/` folder. Record the fix in `Error_Resolution_NodeVersion.md` per the project's error protocol.
+> **Lưu ý về Node 24:** phạm vi hỗ trợ của React Native đi chậm hơn nhịp phát hành của Node. Nếu `npx react-native` báo lỗi engine hoặc `ERR_REQUIRE_ESM`, hãy cài thêm Node 20 LTS qua `nvm-windows` và ghim riêng cho thư mục `mobile/`. Sự cố (nếu xảy ra) sẽ được ghi vào `Error_NodeVersion.md` theo quy trình xử lý lỗi của dự án.
 
 ---
 
-## 7. Backend Setup (FastAPI + PostgreSQL)
+## 7. Cài đặt Backend (FastAPI + PostgreSQL)
 
-All commands are **PowerShell** (the project's primary shell), run from the repo root.
+Toàn bộ lệnh dùng **PowerShell**, chạy từ thư mục gốc.
 
-### 7.1 Create the database
-
-First confirm the server is actually running — on this machine the Windows service was never registered, so it does **not** start at boot:
+### 7.1 Kiểm tra máy chủ PostgreSQL
 
 ```powershell
-Get-NetTCPConnection -LocalPort 5432 -State Listen    # expect two rows
+Get-Service postgresql-x64-18 | Select-Object Status,StartType
+Get-NetTCPConnection -LocalPort 5432 -State Listen    # kỳ vọng có 2 dòng
 ```
 
-If that returns nothing, follow **[Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md)** before continuing.
+Nếu không có gì, xem **[Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md)**.
 
-```powershell
-$psql = "C:\Program Files\PostgreSQL\18\bin\psql.exe"   # not on PATH by default
-$env:PGPASSWORD = "<your postgres password>"
-& $psql -U postgres -h localhost -c "CREATE DATABASE agrilog;"
-& $psql -U postgres -h localhost -c "CREATE DATABASE agrilog_test;"   # used by pytest
-Remove-Item Env:\PGPASSWORD
-```
-
-`agrilog_test` must be a **separate** database: the pytest session fixture runs `DROP SCHEMA public CASCADE` before applying migrations, so pointing it at `agrilog` would destroy your development data on every test run.
-
-### 7.2 Create the virtual environment
+### 7.2 Tạo môi trường ảo và cài phụ thuộc
 
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-> If PowerShell blocks the activation script with *"running scripts is disabled on this system"*, unblock it for the current session only:
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-> ```
-
-### 7.3 Install dependencies
-
-```powershell
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 7.4 Configure environment
+> Nếu PowerShell chặn script kích hoạt (*"running scripts is disabled"*), mở khoá cho phiên hiện tại:
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+> ```
+
+### 7.3 Cấu hình môi trường
 
 ```powershell
 Copy-Item .env.example .env
+.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(64))"
 ```
 
-Then edit `backend/.env`:
+Sửa `backend\.env`: thay mật khẩu trong hai URL và dán chuỗi vừa sinh vào `JWT_SECRET`.
 
-```dotenv
-DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/agrilog
-TEST_DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/agrilog_test
-JWT_SECRET=change-me-to-a-long-random-string
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=10080
-CORS_ORIGINS=http://localhost:8081
+> **Nếu mật khẩu chứa `@`, `:`, `/`, `#` hoặc `?`** thì phải mã hoá percent, nếu không bộ phân tích URL sẽ hiểu sai vị trí bắt đầu của host:
+> ```powershell
+> [uri]::EscapeDataString('p@ss:w0rd')
+> ```
+
+### 7.4 Tạo role và database
+
+```powershell
+.\scripts\setup_db.ps1
 ```
 
-> `ACCESS_TOKEN_EXPIRE_MINUTES` is deliberately long (7 days). A farmer may be offline for a week; forcing re-login before a sync is possible would defeat the entire premise of the app.
+Script hỏi mật khẩu `postgres` (nhập ẩn), tạo role `agrilog` và hai database `agrilog` / `agrilog_test`, rồi chạy migration. Chạy lại nhiều lần vô hại.
 
-### 7.5 Run migrations & start the server
+Ứng dụng **không** kết nối bằng superuser `postgres`. Nó chỉ cần sở hữu hai database của mình; chạy bằng superuser sẽ biến một lỗi SQL-injection từ vấn đề một database thành chiếm toàn cụm.
+
+`agrilog_test` bắt buộc phải là database riêng: fixture pytest chạy `DROP SCHEMA public CASCADE` trước mỗi phiên, trỏ vào `agrilog` sẽ xoá sạch dữ liệu phát triển mỗi lần chạy test.
+
+### 7.5 Chạy máy chủ
 
 ```powershell
 alembic upgrade head
+python -m app.seed                                    # dữ liệu mẫu (tuỳ chọn)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- API docs (Swagger): <http://localhost:8000/docs>
-- Health check: <http://localhost:8000/health>
+- Tài liệu API (Swagger): <http://localhost:8000/docs>
+- Kiểm tra sống: <http://localhost:8000/health>
+- Kiểm tra sẵn sàng: <http://localhost:8000/health/db>
 
-> `--host 0.0.0.0` matters: the Android emulator reaches the host machine at `10.0.2.2`, not `127.0.0.1`, so the server must not bind to loopback only.
+> `--host 0.0.0.0` là bắt buộc: máy ảo Android truy cập máy chủ qua `10.0.2.2`, không phải `127.0.0.1`, nên không được chỉ bind vào loopback.
 
-### 7.6 Useful backend commands
+### 7.6 Các lệnh thường dùng
 
 ```powershell
-alembic revision --autogenerate -m "add stock_transactions"   # new migration
-alembic downgrade -1                                          # roll back one
-python -m app.seed                                            # sample dev data
-pytest -q                                                     # run test suite
-ruff check app tests                                          # lint
+alembic revision --autogenerate -m "mô tả"   # tạo migration mới
+alembic downgrade -1                         # lùi một bước
+alembic current                              # phiên bản hiện tại
+python -m app.seed --reset                   # dựng lại dữ liệu mẫu
+pytest                                       # chạy 345 test
+pytest --cov=app --cov-report=term           # kèm độ phủ
+ruff check app tests                         # kiểm tra lint
 ```
+
+Tài khoản mẫu sau khi seed: `demo@agrilog.vn` / `demo1234`
 
 ---
 
-## 8. Mobile Setup (React Native + WatermelonDB)
+## 8. Cài đặt Mobile (React Native + WatermelonDB)
 
 ```powershell
 cd mobile
 npm install
 ```
 
-Point the app at the backend — `mobile/.env`:
+Trỏ ứng dụng tới backend — `mobile/.env`:
 
 ```dotenv
-API_BASE_URL=http://10.0.2.2:8000     # Android emulator → host machine
-# API_BASE_URL=http://192.168.1.x:8000  # physical device on the same LAN
+API_BASE_URL=http://10.0.2.2:8000       # máy ảo Android → máy chủ
+# API_BASE_URL=http://192.168.1.x:8000  # thiết bị thật cùng mạng LAN
 ```
 
-Start Metro and build to the emulator (launch the AVD from Android Studio first):
+Khởi động Metro và build lên máy ảo (mở AVD từ Android Studio trước):
 
 ```powershell
-npm start            # terminal 1 — Metro bundler
-npm run android      # terminal 2 — build & install
+npm start            # cửa sổ 1 — Metro bundler
+npm run android      # cửa sổ 2 — build và cài đặt
 ```
 
-### Verifying the offline guarantee
+### Kiểm chứng cam kết ngoại tuyến
 
-The single most important manual test in this project:
+Đây là phép thử thủ công quan trọng nhất của cả đồ án:
 
-1. Launch the app and log in **once** while online (this caches the JWT).
-2. Enable **airplane mode** on the emulator/device.
-3. Create a season, log 3 diary entries with supply consumption, record an expense and a revenue, open all 3 report charts.
-4. Everything must work with **no spinners, no errors, no empty states**.
-5. Disable airplane mode, tap **Sync now**, and confirm the rows appear in pgAdmin.
+1. Mở ứng dụng, đăng nhập **một lần** khi còn mạng (để lưu JWT).
+2. Bật **chế độ máy bay**.
+3. Tạo một mùa vụ, ghi 3 nhật ký có dùng vật tư, ghi một khoản chi và một khoản thu, mở cả 3 biểu đồ.
+4. Mọi thứ phải chạy — **không vòng xoay chờ, không lỗi, không màn hình trống**.
+5. Tắt chế độ máy bay, bấm **Đồng bộ ngay**, kiểm tra dữ liệu đã lên PostgreSQL bằng pgAdmin.
 
-If any step in (3) fails, the offline-first requirement is not met — that is the acceptance bar for Issues #38 and #47.
+Nếu bất kỳ bước nào ở (3) thất bại thì yêu cầu offline-first chưa đạt — đây chính là mức chấp nhận của Issue #38 và #47.
 
 ---
 
-## 9. How Offline-First Sync Works
+## 9. Cơ chế đồng bộ offline-first
 
-### 9.1 The write path (always local)
+### 9.1 Đường ghi (luôn cục bộ)
 
 ```
-User taps Save
-   └─> database.write(async () => { … })       // WatermelonDB writer block
-         └─> row committed to SQLite
+Người dùng bấm Lưu
+   └─> database.write(async () => { … })       // khối writer của WatermelonDB
+         └─> ghi vào SQLite
                ├─> _status = 'created' | 'updated'
-               ├─> _changed = 'quantity,note'   // which fields changed locally
-               └─> observable query re-emits → UI updates
+               ├─> _changed = 'quantity,note'   // trường nào đã đổi cục bộ
+               └─> truy vấn observable phát lại → giao diện cập nhật
 ```
 
-The network is never on this path. `_status` and `_changed` are WatermelonDB's internal bookkeeping columns — they are what turn "the local DB" into "a queue of pending changes" without needing a separate outbox table.
+Mạng không nằm trên đường này. `_status` và `_changed` là hai cột nội bộ của WatermelonDB — chính chúng biến "CSDL cục bộ" thành "hàng đợi thay đổi chờ gửi" mà không cần bảng outbox riêng.
 
-### 9.2 The sync path
+### 9.2 Đường đồng bộ
 
-`synchronize()` runs a strict pull-then-push cycle:
+`synchronize()` chạy chu trình pull-rồi-push:
 
 ```
 ┌── PULL ────────────────────────────────────────────────┐
-│ GET /sync/pull?last_pulled_at=<ms>&schema_version=<n>   │
-│   → server returns everything changed since the cursor  │
-│   → client applies it, per-field-merging any record     │
-│     that also has local edits                           │
+│ GET /sync/pull?lastPulledAt=<ms>&schemaVersion=<n>      │
+│   → máy chủ trả về mọi thay đổi sau con trỏ             │
+│   → client áp dụng, hợp nhất theo từng trường với các   │
+│     bản ghi đang có sửa đổi cục bộ                      │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌── PUSH ────────────────────────────────────────────────┐
-│ POST /sync/push  { changes, lastPulledAt }              │
-│   → server applies the whole batch in ONE transaction   │
-│   → on success, client marks records _status='synced'   │
+│ POST /sync/push  { changes }                            │
+│   → máy chủ áp dụng cả lô trong MỘT transaction         │
+│   → thành công thì client đánh dấu _status='synced'     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Pull response** (exactly the shape WatermelonDB's `synchronize()` expects):
+**Phản hồi pull** đúng hình dạng mà `synchronize()` yêu cầu:
 
 ```jsonc
 {
@@ -390,241 +367,163 @@ The network is never on this path. `_status` and `_changed` are WatermelonDB's i
 }
 ```
 
-`timestamp` is the **server's** clock in epoch milliseconds and becomes the client's next `last_pulled_at`. `deleted` carries bare ID strings, which is why the server keeps tombstones (a `deleted_at` column) rather than hard-deleting rows — a hard delete is invisible to a device that was offline when it happened.
+`timestamp` là giờ **máy chủ** tính bằng epoch mili-giây và trở thành `lastPulledAt` kế tiếp của client. `deleted` chỉ chứa chuỗi ID — đó là lý do máy chủ giữ bia mộ (cột `deleted_at`) thay vì xoá cứng: xoá cứng thì thiết bị đang offline lúc đó sẽ không bao giờ biết.
 
-**Push request** is the same `changes` envelope, sent from the client.
+### 9.3 Chống trùng lặp
 
-### 9.3 Deduplication
+Khoá chính của mọi bản ghi là **ID do client sinh**, tạo trên thiết bị ngay lúc chèn. Vì vậy bộ xử lý push thực hiện *upsert theo chính ID đó*:
 
-Every record's primary key is a **client-generated ID**, created on the device at insert time. The push handler therefore does an *upsert keyed on that ID*:
+- Đồng bộ thành công nhưng phản hồi mất do rớt mạng → client gửi lại đúng lô cũ → máy chủ upsert cùng ID → **không có bản ghi trùng**.
 
-- Sync succeeds but the response is lost to a dropped connection → the client retries the identical batch → the server upserts the same IDs → **zero duplicates**.
+Đây là lý do chiến lược ID là một quyết định thiết kế (Issue #9), không phải chi tiết cài đặt. Với ID do máy chủ sinh, một lần push bị gián đoạn là thực sự nhập nhằng và trùng lặp trở nên không tránh khỏi.
 
-This is why the ID strategy is a design decision (Issue #9), not an implementation detail. With server-assigned IDs, an interrupted push is genuinely ambiguous and duplicates become unavoidable.
+### 9.4 Giải quyết xung đột
 
-### 9.4 Conflict resolution
+Hai thiết bị cùng sửa một bản ghi khi cả hai offline được xử lý ở hai tầng:
 
-Two devices editing the same record while both offline is resolved at two layers:
-
-| Layer | Rule |
+| Tầng | Quy tắc |
 |---|---|
-| **Server** (`/sync/push`) | **Last-write-wins by `updated_at`.** An incoming record whose `updated_at` is older than the stored row is rejected for that row and reported back per-record — it never silently clobbers newer data. |
-| **Client** (on pull) | **Per-field merge.** For a record with local unsynced edits, WatermelonDB keeps the locally-changed fields listed in `_changed` and applies the server's values only to the untouched fields. The farmer never loses the note they just typed because someone else edited the quantity. |
+| **Máy chủ** (`/sync/push`) | **Ghi sau thắng, theo `updated_at`.** Bản ghi đến có `updated_at` cũ hơn bản đang lưu sẽ bị từ chối riêng cho dòng đó và **báo cáo lại theo từng bản ghi** — không bao giờ âm thầm đè lên dữ liệu mới hơn. |
+| **Client** (khi pull) | **Hợp nhất theo từng trường.** Với bản ghi có sửa đổi cục bộ chưa đồng bộ, WatermelonDB giữ các trường liệt kê trong `_changed` và chỉ áp giá trị máy chủ vào những trường chưa bị đụng tới. Nông dân không mất ghi chú vừa gõ chỉ vì người khác sửa số lượng. |
 
-The full contract, including per-record error reporting and the retry/backoff policy for flaky rural connectivity, lives in `docs/sync-api.md` (Issue #9) and is exercised by the two-device tests in Issue #40.
+### 9.5 Tính nguyên tử
 
-### 9.5 Atomicity
+Bộ xử lý push bọc cả lô trong **một transaction**. Mạng rớt giữa chừng để PostgreSQL **y nguyên như trước**; client vẫn giữ mọi bản ghi ở `_status = 'created'/'updated'` và gửi lại toàn bộ lô. Không có trạng thái áp-dụng-một-nửa nào phải hoà giải — thiết kế cố ý đánh đổi một chút băng thông lãng phí lấy bảo đảm rằng cơ sở dữ liệu không bao giờ ở trạng thái nửa vời (Issue #36).
 
-The push handler wraps the entire batch in a single database transaction. A connection dropped mid-push leaves PostgreSQL **exactly as it was before**; the client still holds every record at `_status = 'created'/'updated'` and retries the whole batch. There is no partial-apply state to reconcile — the design deliberately trades a little wasted bandwidth for the guarantee that the database is never half-updated (Issue #36).
-
----
-
-## 10. Reports & Visualisation
-
-Three charts, all computed from **local** WatermelonDB data so they render in airplane mode, with the backend aggregation endpoints (Issue #42) available as a cross-check and for a future web view:
-
-| Chart | Type | Question it answers | Local query | API |
-|---|---|---|---|---|
-| Income vs Expense | Line / Bar | *Am I spending faster than I'm earning this season?* | expenses + revenues grouped by period, filtered by season | `GET /reports/income-expense` |
-| Supply Consumption | Pie / Bar | *Which inputs are eating my budget?* | stock_transactions of type `out` grouped by supply category | `GET /reports/supply-consumption` |
-| Season Comparison | Bar | *Which season actually performed best?* | per-season Σrevenue − Σexpense | `GET /reports/season-comparison` |
+Riêng từng bản ghi không áp được (thường vì bản ghi cha còn nằm ở thiết bị khác) thì bị từ chối riêng lẻ và báo về, chứ không làm hỏng cả lô — mỗi bản ghi có một SAVEPOINT riêng để một vi phạm ràng buộc không kéo 499 bản ghi còn lại chết theo.
 
 ---
 
-## 11. Project Roadmap (Milestones)
+## 10. Báo cáo và trực quan hóa
 
-Dates come directly from the *Kế hoạch thực hiện* table in the proposal. Full issue breakdown: **[AgriLog_GitHub_Issues_and_Kanban.md](AgriLog_GitHub_Issues_and_Kanban.md)**.
+Ba biểu đồ, tất cả tính từ dữ liệu WatermelonDB **cục bộ** nên vẽ được ở chế độ máy bay; các endpoint tổng hợp phía backend (Issue #42) dùng để đối chiếu và cho bản web tương lai:
 
-| Milestone | Scope | Dates (2026) | Issues |
+| Biểu đồ | Loại | Câu hỏi nó trả lời | API |
 |---|---|---|---|
-| M1 | Requirements Analysis & Planning | Aug 10 – Aug 16 | #1 – #5 |
-| M2 | Detailed Design | Aug 17 – Aug 26 | #6 – #11 |
-| M3 | Backend & Mobile Foundation | Aug 27 – Sep 9 | #12 – #18 |
-| M4 | Farming Diary & Cost Module | Sep 10 – Sep 23 | #19 – #29 |
-| M5 | Progress Report 1 | Sep 24 – Sep 28 | #30 |
-| M6 | Sync Engine | Sep 29 – Oct 12 | #31 – #36 |
-| M7 | Offline & Sync Testing | Oct 13 – Oct 22 | #37 – #41 |
-| M8 | Reports & Visualisation | Oct 23 – Nov 1 | #42 – #47 |
-| M9 | Progress Report 2 | Nov 2 – Nov 5 | #48 |
-| M10 | Optimization & Final Documentation | Nov 6 – Nov 12 | #49 – #54 |
-| M11 | Final Defense | Nov 13 – Nov 15 | #55 |
+| Thu vs Chi | Đường / Cột | *Vụ này tôi có đang tiêu nhanh hơn kiếm không?* | `GET /reports/income-expense` |
+| Vật tư tiêu thụ | Tròn / Cột | *Loại vật tư nào đang ngốn tiền nhất?* | `GET /reports/supply-consumption` |
+| So sánh mùa vụ | Cột | *Vụ nào thực sự hiệu quả nhất?* | `GET /reports/season-comparison` |
 
-> **Single-owner note.** The issue document assigns work across two developers (Thai / Khoa). This implementation is being carried out by a single developer, so every issue is single-owner; the assignee column should be read as *"which side of the stack this touches"* rather than *"who does it."*
+Biểu đồ 1 trả về **bucket dày đặc**: khoảng thời gian không có hoạt động vẫn xuất hiện với giá trị 0. Chuỗi thưa khiến biểu đồ đường nói dối về hình dạng chi tiêu.
+
+Biểu đồ 2 chỉ đếm giao dịch `out`. Khi một nhóm **trộn đơn vị** (phân bón có cả `kg` lẫn `bao`), cờ `unit_mixed` bật lên và `unit` để trống: cộng ki-lô-gam với lít là con số vô nghĩa, nên biểu đồ phải vẽ theo **chi phí**.
 
 ---
 
-## 12. Branching Strategy & Workflow
+## 11. Lộ trình thực hiện
+
+Mốc thời gian lấy trực tiếp từ bảng *Kế hoạch thực hiện* trong đề cương. Chi tiết 55 issue: **[AgriLog_GitHub_Issues_and_Kanban.md](AgriLog_GitHub_Issues_and_Kanban.md)**.
+
+| Mốc | Nội dung | Thời gian (2026) | Issue | Trạng thái |
+|---|---|---|---|---|
+| M1 | Phân tích đề tài | 10/8 – 16/8 | #1 – #5 | ✅ |
+| M2 | Thiết kế chi tiết | 17/8 – 26/8 | #6 – #11 | ✅ |
+| M3 | Nền tảng Backend & Mobile | 27/8 – 9/9 | #12 – #18 | 🔶 backend xong |
+| M4 | Module Nhật ký & Chi phí | 10/9 – 23/9 | #19 – #29 | 🔶 backend xong |
+| M5 | Báo cáo tiến độ lần 1 | 24/9 – 28/9 | #30 | ⬜ |
+| M6 | Sync Engine | 29/9 – 12/10 | #31 – #36 | 🔶 backend xong |
+| M7 | Kiểm thử ngoại tuyến & đồng bộ | 13/10 – 22/10 | #37 – #41 | ⬜ |
+| M8 | Module Báo cáo & Trực quan hóa | 23/10 – 1/11 | #42 – #47 | 🔶 backend xong |
+| M9 | Báo cáo tiến độ lần 2 | 2/11 – 5/11 | #48 | ⬜ |
+| M10 | Tối ưu & hoàn thiện báo cáo | 6/11 – 12/11 | #49 – #54 | ⬜ |
+| M11 | Bảo vệ đồ án | 13/11 – 15/11 | #55 | ⬜ |
+
+> **Ghi chú về việc thực hiện một mình.** Tài liệu issue phân công cho hai người (Thái / Khoa). Bản cài đặt này do một người thực hiện, nên cột người phụ trách nên đọc là *"phần này thuộc phía nào của hệ thống"* chứ không phải *"ai làm"*.
+
+---
+
+## 12. Quy ước nhánh và commit
 
 ```
-main      ← protected. Only receives reviewed PRs from develop. Always demo-ready.
-develop   ← integration branch. All feature branches merge here first.
-feature/* ← one branch per issue, e.g. feature/21-diary-log-api
-fix/*     ← bug fixes from the QA milestone, e.g. fix/41-stock-restore-rounding
-docs/*    ← documentation-only changes
+main      ← được bảo vệ. Chỉ nhận PR đã review từ develop. Luôn sẵn sàng demo.
+develop   ← nhánh tích hợp. Mọi nhánh tính năng gộp vào đây trước.
+feature/* ← một nhánh cho một issue, ví dụ feature/21-diary-log-api
+fix/*     ← sửa lỗi từ giai đoạn QA, ví dụ fix/41-stock-restore-rounding
+docs/*    ← thay đổi chỉ liên quan tài liệu
 ```
 
-Commit convention (Conventional Commits):
+Quy ước commit (Conventional Commits):
 
 ```
-<type>(<scope>): <subject>       #<issue>
+<type>(<scope>): <mô tả ngắn>
 
-feat(sync): implement push endpoint with transactional batch apply   #31
-fix(mobile): restore stock on diary entry delete while offline       #26
-docs(readme): document sync contract                                 #1
+feat(sync): implement push endpoint with transactional batch apply
+fix(mobile): restore stock on diary entry delete while offline
+docs(readme): document sync contract
 ```
 
 Types: `feat` · `fix` · `docs` · `test` · `refactor` · `perf` · `chore`
 Scopes: `backend` · `mobile` · `db` · `sync` · `reports` · `auth` · `ci`
 
-Closing an issue from a PR: put `Closes #21` in the PR body — GitHub closes the issue and the Projects board auto-moves the card to **Done**.
+Đóng issue từ PR: ghi `Closes #21` trong nội dung PR — GitHub sẽ tự đóng issue và bảng Projects tự chuyển thẻ sang **Done**.
 
 ---
 
-## 13. Testing Strategy
+## 13. Chiến lược kiểm thử
 
-| Level | Tooling | What it protects |
+| Mức | Công cụ | Bảo vệ điều gì |
 |---|---|---|
-| Schema parity | `pytest` (no DB needed) | ORM models vs Alembic migrations rendered to SQL and compared structurally — catches the drift that otherwise surfaces as a random `UndefinedColumn` in an unrelated request |
-| Backend unit | `pytest` | Stock-restore arithmetic, financial rollups, conflict resolution rules |
-| Backend integration | `pytest` + `TestClient` + test DB | Auth scoping, full sync push/pull round-trip, idempotent re-push |
-| Backend load | custom script (Issue #39) | 500+ queued changes from a device offline for weeks |
-| Mobile unit | `jest` | Local stock-restore logic, chart data reducers |
-| Manual offline | airplane-mode checklist (Issue #38) | The core promise: every module works with no network |
-| Manual multi-device | 2 emulators (Issue #40) | Conflict resolution behaves as documented, with no silent data loss |
+| Song song schema | `pytest` (không cần DB) | So sánh model ORM với migration bằng cách render cả hai ra SQL — bắt được lệch schema, thứ mà nếu không sẽ hiện ra thành `UndefinedColumn` ngẫu nhiên ở một request chẳng liên quan |
+| Backend unit | `pytest` | Số học hoàn kho, tổng hợp tài chính, quy tắc giải quyết xung đột |
+| Backend tích hợp | `pytest` + `TestClient` + DB test | Phân vùng theo nông hộ, vòng tròn push/pull đầy đủ, push lại an toàn |
+| Backend tải | script riêng (Issue #39) | 500+ thay đổi tồn đọng từ thiết bị offline nhiều tuần |
+| Mobile unit | `jest` | Logic hoàn kho cục bộ, hàm rút gọn dữ liệu biểu đồ |
+| Thủ công ngoại tuyến | checklist chế độ máy bay (#38) | Lời hứa cốt lõi: mọi module chạy được khi không mạng |
+| Thủ công đa thiết bị | 2 máy ảo (#40) | Giải quyết xung đột đúng như tài liệu, không mất dữ liệu âm thầm |
 
-CI runs lint + tests on every push and PR for both codebases (Issue #18) and is required to pass before merging to `main`.
+**Hiện trạng: 345 test, độ phủ 94%.**
+
+Bộ test được **kiểm chứng bằng đột biến** (mutation check) ở những chỗ quan trọng nhất: cố tình phá logic hoàn kho làm 3/4 test bất biến I3 thất bại; nới lỏng so sánh ghi-sau-thắng từ `<=` thành `<` làm 2 test chống trùng thất bại; bỏ kiểm tra chủ sở hữu làm test cách ly nông hộ thất bại. Các assertion không rỗng.
+
+CI chạy lint + test cho mỗi push và PR ở cả hai codebase (Issue #18) và phải xanh mới được gộp vào `main`.
 
 ---
 
-## 14. Documentation Index
+## 14. Danh mục tài liệu
 
-| Document | Contents | Issue |
+| Tài liệu | Nội dung | Issue |
 |---|---|---|
-| [Tech_Stack_Overview.md](Tech_Stack_Overview.md) | Why each technology was chosen, and the AI collaboration record | #5, #11 |
-| [Data_Requirements_Database.md](Data_Requirements_Database.md) | **Authoritative data model** — ERD, table specs, sync metadata, PG ↔ WatermelonDB parity, invariants, index plan | #6, #7, #8, #9 |
-| [AgriLog_GitHub_Issues_and_Kanban.md](AgriLog_GitHub_Issues_and_Kanban.md) | All 55 issues, 11 milestones, Kanban setup guide | #1 |
-| `docs/requirements.md` | Functional & non-functional requirements | #2 |
-| `docs/personas.md` | Personas and user stories | #3 |
-| `docs/architecture.md` + `docs/erd.png` | Architecture write-up and ERD | #4, #6 |
-| `docs/database-schema.md` | Table-by-table schema decisions, PG ↔ WatermelonDB parity | #6, #8 |
-| `docs/sync-api.md` | Full sync contract, conflict & dedup strategy | #9 |
-| `docs/adr/0001-tech-stack.md` | Architecture Decision Record | #11 |
-| `docs/qa-checklist.md` | Regression checklist | #51 |
-| `Data_Requirements_*.md` | Per-module data model specs, written before each module starts | — |
-| [Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md) | PostgreSQL 18 server service not registered — diagnosis and fix | #13 |
-| [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) | `now()` vs `clock_timestamp()` — a silent data-loss bug in the pull cursor | #9, #32 |
-| [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md) | `lower()` does not lowercase Vietnamese under the `C` collation | #23 |
-| `Error_*.md` | Error description → root cause → exact fix, one file per incident | — |
+| [Data_Requirements_Database.md](Data_Requirements_Database.md) | **Mô hình dữ liệu gốc** — ERD, đặc tả bảng, metadata đồng bộ, song song PG ↔ WatermelonDB, bất biến, kế hoạch index | #6, #7, #8, #9 |
+| [AgriLog_GitHub_Issues_and_Kanban.md](AgriLog_GitHub_Issues_and_Kanban.md) | 55 issue, 11 mốc, hướng dẫn dựng bảng Kanban | #1 |
+| [Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md) | Service PostgreSQL 18 chưa đăng ký — chẩn đoán và cách sửa | #13 |
+| [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) | `now()` và `clock_timestamp()` — lỗi mất dữ liệu âm thầm ở con trỏ pull | #9, #32 |
+| [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md) | `lower()` không hạ chữ tiếng Việt dưới collation `C` | #23 |
+| `Data_Requirements_*.md` | Đặc tả mô hình dữ liệu từng module, viết trước khi bắt đầu module đó | — |
+| `Error_*.md` | Mô tả lỗi → nguyên nhân gốc → cách sửa từng bước, mỗi sự cố một file | — |
 
 ---
 
-## 15. AI Contribution Statement
+## 15. Tuyên bố về đóng góp của AI
 
-This project was developed with **Claude (Anthropic)**, operating inside VS Code as a pair-programming and architecture assistant. In the interest of academic honesty, the division of labour is stated explicitly:
+Đồ án này được thực hiện với sự hỗ trợ của **Claude (Anthropic)**, hoạt động trong VS Code như một trợ lý lập trình cặp và tư vấn kiến trúc. Vì tính trung thực học thuật, phân chia công việc được nêu rõ:
 
-**AI-assisted:**
-- System architecture design (offline-first topology, sync data flow, conflict-resolution strategy)
-- Database schema design and the PostgreSQL ↔ WatermelonDB parity mapping
-- Implementation code across the FastAPI backend and React Native client, including the sync engine
-- Test design and troubleshooting, captured in `Error_Resolution_*.md` files
-- Technical documentation, including this README
+**Phần có AI hỗ trợ:**
+- Thiết kế kiến trúc hệ thống (mô hình offline-first, luồng dữ liệu đồng bộ, chiến lược giải quyết xung đột)
+- Thiết kế schema CSDL và ánh xạ song song PostgreSQL ↔ WatermelonDB
+- Mã nguồn cài đặt cho backend FastAPI và client React Native, bao gồm sync engine
+- Thiết kế test và xử lý sự cố, ghi lại trong các file `Error_*.md`
+- Tài liệu kỹ thuật, bao gồm chính file README này
 
-**Developer-owned (Lê Thành Thái):**
-- Problem definition, scope, and all requirements originating from the thesis proposal
-- Every technical decision — accepting, rejecting, or amending AI-proposed designs
-- Environment setup, execution, debugging, and verification on real hardware
-- All testing and validation against the acceptance criteria
-- The thesis report, defense presentation, and defense itself
+**Phần do sinh viên chịu trách nhiệm (Lê Thành Thái):**
+- Xác định vấn đề, phạm vi và toàn bộ yêu cầu xuất phát từ đề cương
+- Mọi quyết định kỹ thuật — chấp nhận, bác bỏ hoặc điều chỉnh các thiết kế do AI đề xuất
+- Cài đặt môi trường, chạy, gỡ lỗi và kiểm chứng trên máy thật
+- Toàn bộ kiểm thử và xác nhận theo tiêu chí nghiệm thu
+- Báo cáo thuyết minh, slide bảo vệ và buổi bảo vệ
 
-A fuller account of the AI's role appears in [Tech_Stack_Overview.md § AI Contribution](Tech_Stack_Overview.md#8-ai-contribution--collaboration-record) and will be reproduced in the final thesis report (Issue #52).
+Phần trình bày đầy đủ hơn về vai trò của AI sẽ được đưa vào báo cáo cuối cùng (Issue #52).
 
 ---
 
-## 16. Author
+## 16. Tác giả
 
-| Name | Student ID | Role |
+| Họ tên | MSSV | Vai trò |
 |---|---|---|
-| **Lê Thành Thái** | 2212456 | Full-stack implementation — backend, mobile, sync engine, documentation |
+| **Lê Thành Thái** | 2212456 | Cài đặt toàn bộ — backend, mobile, sync engine, tài liệu |
 
-Original proposal co-author: Nguyễn Hoàng Anh Khoa (2212394)
-Advisor: TS. Nguyễn Thị Lương — Faculty of Information Technology, Đà Lạt University
-
----
-
-## 17. Getting This README onto GitHub
-
-This folder is **not yet a Git repository**. Run these commands **exactly as written**, from `d:\agrilogapp` in PowerShell.
-
-### Step 1 — One-time Git identity (skip if already configured)
-
-```powershell
-git config --global user.name "Le Thanh Thai"
-git config --global user.email "lethanhthai0805@gmail.com"
-```
-
-### Step 2 — Initialise the repository
-
-```powershell
-git init
-git branch -M main
-```
-
-### Step 3 — Stage and commit
-
-```powershell
-git add README.md Tech_Stack_Overview.md .gitignore AgriLog_GitHub_Issues_and_Kanban.md
-git status
-```
-
-Check the `git status` output before committing — nothing unexpected (no `.venv`, no `node_modules`, no `.env`) should be listed. Then:
-
-```powershell
-git commit -m @'
-docs: add project README and tech stack overview
-
-Adds the foundational documentation for AgriLog: project overview,
-architecture, setup instructions for the FastAPI backend and React
-Native client, and a description of the offline-first sync design.
-
-Closes #1
-'@
-```
-
-> The `@'` … `'@` block is a PowerShell **here-string** for multi-line commit messages. The closing `'@` **must** be at the very start of its line with no leading spaces, or PowerShell throws a parse error.
-> Prefer a single line? Use `git commit -m "docs: add project README and tech stack overview"` instead.
-
-### Step 4 — Connect to GitHub and push
-
-Create the empty repository at <https://github.com/new> named **`agrilogapp`** under the `ThaiTaka` account first — **without** a README, `.gitignore`, or licence, so the first push isn't rejected for divergent history.
-
-```powershell
-git remote add origin https://github.com/ThaiTaka/agrilogapp.git
-git remote -v
-git push -u origin main
-```
-
-### Step 5 — Create the `develop` branch (required by Issue #1)
-
-```powershell
-git checkout -b develop
-git push -u origin develop
-git checkout main
-```
-
-Then on GitHub: **Settings → Branches → Add branch protection rule** for `main` — enable *Require a pull request before merging*, and later *Require status checks to pass* once CI exists (Issue #18).
+Đồng tác giả đề cương: Nguyễn Hoàng Anh Khoa (2212394)
+Giáo viên hướng dẫn: TS. Nguyễn Thị Lương — Khoa Công nghệ Thông tin, Trường Đại học Đà Lạt
 
 ---
 
-### Troubleshooting the push
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| `remote origin already exists` | Remote configured previously | `git remote set-url origin https://github.com/ThaiTaka/agrilogapp.git` |
-| `Updates were rejected because the remote contains work you do not have` | GitHub auto-created a README | `git pull --rebase origin main` then push again |
-| Browser opens asking to authenticate | Git Credential Manager | Sign in to GitHub in the browser; credentials are cached afterwards |
-| `Support for password authentication was removed` | Using an account password | Generate a Personal Access Token (Settings → Developer settings → PAT → *Fine-grained*, `Contents: Read and write`) and use it as the password |
-| `src refspec main does not match any` | No commit exists yet | Step 3 was skipped or failed — run `git log --oneline` to confirm |
-
----
-
-*This README is a living document. As modules land, update §5 (structure), §9 (sync behaviour) and §13 (testing) to reflect what was actually built — the thesis report in Issue #52 draws directly from this file.*
+*README này là tài liệu sống. Khi từng module hoàn thành, cập nhật Mục 5 (cấu trúc), Mục 9 (hành vi đồng bộ) và Mục 13 (kiểm thử) cho khớp với những gì đã thực sự xây dựng — báo cáo thuyết minh ở Issue #52 lấy trực tiếp từ file này.*

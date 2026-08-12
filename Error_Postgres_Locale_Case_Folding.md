@@ -1,15 +1,15 @@
-# Error Report — `lower()` does not lowercase Vietnamese, so duplicate supplies slipped through
+# Báo cáo sự cố — `lower()` không hạ chữ tiếng Việt, khiến vật tư trùng lọt lưới
 
-**Date:** 11 Aug 2026
-**Affects:** Issue #23 (supply/inventory), and any future case-insensitive match
-**Severity:** High — a silent correctness failure in the app's primary language
-**Status:** Fixed in migration `0002`. Two regression tests added.
+**Ngày:** 11/08/2026
+**Ảnh hưởng:** Issue #23 (vật tư / tồn kho), và mọi phép so khớp không phân biệt hoa thường về sau
+**Mức độ:** Cao — sai đúng đắn một cách âm thầm, ngay trong ngôn ngữ chính của ứng dụng
+**Trạng thái:** Đã sửa trong migration `0002`. Đã thêm hai test hồi quy.
 
 ---
 
-## 1. Error Description
+## 1. Mô tả lỗi
 
-Two tests failed together:
+Hai test cùng thất bại:
 
 ```
 FAILED tests/test_supplies.py::TestCatalogue::test_duplicate_name_and_unit_conflicts
@@ -19,55 +19,55 @@ FAILED tests/test_supplies.py::TestCatalogue::test_duplicate_check_is_case_insen
   AssertionError: assert 201 == 409
 ```
 
-The first says the friendly Vietnamese message never appeared — the request was rejected by the generic `IntegrityError` handler instead, meaning the *database* caught the duplicate while the *service* did not.
+Test thứ nhất cho thấy thông báo tiếng Việt thân thiện không hề xuất hiện — request bị chặn bởi bộ xử lý `IntegrityError` chung, nghĩa là **database** bắt được trùng còn **service** thì không.
 
-The second is worse: creating `"đạm urê phú mỹ"` after `"Đạm Urê Phú Mỹ"` returned **201 Created**. Neither the service check nor the unique index caught it. Two inventory lines now exist for one physical sack of fertiliser, and every stock level derived from them is split in half.
+Test thứ hai tệ hơn: tạo vật tư `"đạm urê phú mỹ"` sau khi đã có `"Đạm Urê Phú Mỹ"` trả về **201 Created**. Không tầng nào bắt được. Một bao phân giờ thành hai dòng tồn kho, và mọi con số tồn kho suy ra từ đó bị chia đôi.
 
 ---
 
-## 2. Root Cause
+## 2. Nguyên nhân gốc
 
-**PostgreSQL's `lower()` folds case according to the database's collation. Under the `C` collation it only touches ASCII `A-Z`.**
+**`lower()` của PostgreSQL hạ chữ theo collation của database. Với collation `C`, nó chỉ đụng tới ASCII `A-Z`.**
 
-Measured directly:
+Đo trực tiếp:
 
 ```
 db collate/ctype : ('C', 'C')
-pg  lower()      : 'Đạm urê phú mỹ'      ← Đ untouched
+pg  lower()      : 'Đạm urê phú mỹ'      ← chữ Đ không đổi
 py  .lower()     : 'đạm urê phú mỹ'
 AGREE            : False
 ```
 
-Both failures follow from that one line:
+Cả hai thất bại đều bắt nguồn từ đúng một dòng đó:
 
-| Layer | What it did | Why it failed |
+| Tầng | Nó làm gì | Vì sao hỏng |
 |---|---|---|
-| Service | `WHERE lower(name) = :python_lowered` | Compared `'Đạm urê phú mỹ'` (PG) against `'đạm urê phú mỹ'` (Python). Never matches, so the readable error never fires. |
-| Unique index | `UNIQUE (household_id, lower(name), unit)` | `lower('Đạm Urê…')` and `lower('đạm urê…')` are *different strings*, so both rows are accepted. |
+| Service | `WHERE lower(name) = :chuỗi_python_đã_hạ` | So `'Đạm urê phú mỹ'` (PG) với `'đạm urê phú mỹ'` (Python). Không bao giờ khớp, nên thông báo thân thiện không bao giờ chạy. |
+| Unique index | `UNIQUE (household_id, lower(name), unit)` | `lower('Đạm Urê…')` và `lower('đạm urê…')` là *hai chuỗi khác nhau*, nên cả hai dòng đều được chấp nhận. |
 
-In test 1 the two names were byte-identical, so the index did catch it — via `IntegrityError`, hence the generic message. In test 2 the names differed only in case, so nothing caught it at all.
+Ở test 1, hai tên giống nhau từng byte nên index vẫn bắt được — qua `IntegrityError`, do đó ra thông báo chung. Ở test 2, hai tên chỉ khác hoa thường nên **không gì bắt được cả**.
 
-### Why this is not just a test-environment quirk
+### Vì sao đây không chỉ là chuyện của môi trường test
 
-The throwaway test cluster was created with `initdb --locale=C`, which is what exposed it. A developer might reasonably conclude "use a proper locale and move on."
+Cụm test tạm được tạo bằng `initdb --locale=C`, và đó là thứ làm lộ lỗi. Người ta có thể kết luận "dùng locale tử tế là xong".
 
-That conclusion is wrong, for three reasons:
+Kết luận đó sai, vì ba lý do:
 
-1. **It makes application correctness depend on an `initdb` flag** chosen once, years ago, by whoever installed PostgreSQL. Nothing in the codebase asserts it. The next machine, the next CI container, the next deployment is a coin flip.
-2. **CI containers commonly default to `C`.** The GitHub Actions workflow in Issue #18 runs `postgres:18` as a service container; `C`/`C.UTF-8` is a very live possibility. The bug would then appear only in CI, or only in production, but not on the developer's laptop — the worst possible distribution.
-3. **`lower()` is not the correct operation anyway.** Unicode defines `casefold()` for caseless comparison; `lower()` is for display. They differ for real scripts.
+1. **Nó khiến tính đúng đắn của ứng dụng phụ thuộc vào một cờ `initdb`** được ai đó chọn một lần, nhiều năm trước, lúc cài PostgreSQL. Không có dòng code nào trong dự án khẳng định điều đó. Máy tiếp theo, container CI tiếp theo, lần triển khai tiếp theo — đều là tung đồng xu.
+2. **Container CI thường mặc định `C`.** Workflow GitHub Actions ở Issue #18 chạy `postgres:18` như một service container; `C`/`C.UTF-8` là khả năng rất thực. Khi đó lỗi sẽ chỉ hiện trên CI, hoặc chỉ trên máy chủ, nhưng không hiện trên máy của người phát triển — kiểu phân bố tệ nhất có thể.
+3. **Dù sao `lower()` cũng không phải phép toán đúng.** Unicode định nghĩa `casefold()` cho việc so sánh bỏ qua hoa thường; `lower()` là để hiển thị. Chúng khác nhau với các hệ chữ thật.
 
-### Why it was caught
+### Vì sao bắt được
 
-Only because the tests use realistic Vietnamese data. `test_duplicate_check_is_case_insensitive` with `"Urea"`/`"urea"` — pure ASCII — passes against the broken code on every locale. Writing tests in the language the application is actually used in was the thing that made this visible.
+Chỉ vì test dùng dữ liệu tiếng Việt thật. `test_duplicate_check_is_case_insensitive` với `"Urea"`/`"urea"` — thuần ASCII — sẽ pass với code hỏng trên mọi locale. Viết test bằng đúng ngôn ngữ mà ứng dụng thực sự được dùng chính là điều làm lỗi này hiện ra.
 
 ---
 
-## 3. Exact Step-by-Step Fix
+## 3. Cách sửa từng bước
 
-**Stop asking the database to fold case.** Fold it in Python, store the result, and let the index compare bytes.
+**Đừng nhờ database hạ chữ nữa.** Hạ trong Python, lưu kết quả, để index so sánh byte.
 
-### 3.1 The normalisation function
+### 3.1 Hàm chuẩn hoá
 
 `backend/app/core/text.py`:
 
@@ -76,14 +76,14 @@ def normalise_key(value: str) -> str:
     return unicodedata.normalize("NFC", value).strip().casefold()
 ```
 
-- **`casefold()`, not `lower()`** — the Unicode-defined operation for caseless comparison.
-- **NFC first** — `â` can arrive as one code point (U+00E2) or as `a` + U+0302 depending on the keyboard and OS. Same character to a human; different bytes without normalisation.
+- **`casefold()` chứ không phải `lower()`** — đây là phép toán Unicode định nghĩa cho so sánh bỏ qua hoa thường.
+- **NFC trước** — chữ `â` có thể tới dưới dạng một điểm mã (U+00E2) hoặc `a` + dấu mũ tổ hợp, tuỳ bàn phím và hệ điều hành. Với con người là cùng một chữ; không chuẩn hoá thì là hai chuỗi byte khác nhau.
 
-### 3.2 Store the key
+### 3.2 Lưu khoá
 
-`supplies.name_key VARCHAR(160) NOT NULL`, maintained by `SupplyService` on every create and update. Derived from `name`, so it is **server-side only** and never enters a sync payload (the client keeps computing its own local hint with `toLowerCase()`).
+`supplies.name_key VARCHAR(160) NOT NULL`, do `SupplyService` duy trì ở mọi lần tạo và sửa. Vì suy ra từ `name` nên nó **chỉ tồn tại phía máy chủ** và không bao giờ đi vào payload đồng bộ (client vẫn tự tính gợi ý cục bộ bằng `toLowerCase()`).
 
-### 3.3 Swap the index — migration `0002`
+### 3.3 Đổi index — migration `0002`
 
 ```python
 op.add_column("supplies", sa.Column("name_key", sa.String(160), nullable=True))
@@ -98,9 +98,9 @@ op.create_index(
 )
 ```
 
-> The backfill uses `lower()` — the very function this migration exists to stop trusting. That is deliberate and acceptable: it is the only fold available inside SQL, any existing row is development data, and the application rewrites `name_key` correctly the next time each row is updated. On a real dataset the backfill would instead be a one-off Python script iterating rows through `normalise_key`.
+> Bước điền dữ liệu ngược dùng chính `lower()` — hàm mà migration này sinh ra để ngừng tin tưởng. Đó là cố ý và chấp nhận được: đây là phép hạ chữ duy nhất có sẵn trong SQL, mọi dòng đang tồn tại đều là dữ liệu phát triển, và ứng dụng sẽ ghi lại `name_key` đúng ở lần cập nhật tiếp theo của từng dòng. Trên dữ liệu thật, bước này phải là một script Python chạy một lần, lặp qua các dòng và gọi `normalise_key`.
 
-### 3.4 Compare on the key
+### 3.4 So sánh theo khoá
 
 ```python
 name_key = normalise_key(payload.name)
@@ -109,15 +109,15 @@ duplicate = db.execute(
 ).scalar_one_or_none()
 ```
 
-Plain byte equality. Same answer on every cluster, whatever its collation.
+So sánh byte thuần tuý. Cùng một kết quả trên mọi cụm, bất kể nó được `initdb` thế nào.
 
-### 3.5 Also fixed: the seed script
+### 3.5 Sửa kèm: script seed
 
-`app/seed.py` constructed `Supply(...)` directly and would have hit `name_key NOT NULL`. It now goes through `supply_service.create_supply`, which is the correct fix regardless — seeding via a parallel path is how a seed script ends up producing rows the application itself could never create.
+`app/seed.py` trước đây tạo `Supply(...)` trực tiếp và sẽ vi phạm `name_key NOT NULL`. Nay nó đi qua `supply_service.create_supply`, và đó mới là cách đúng dù có lỗi này hay không — seed bằng một đường code song song chính là cách một script seed tạo ra những dòng dữ liệu mà bản thân ứng dụng không bao giờ tạo được.
 
 ---
 
-## 4. Verification
+## 4. Kiểm chứng
 
 ```
 184 passed in 29.12s
@@ -125,27 +125,27 @@ alembic downgrade base -> upgrade head -> current = 0002 (head)
 ruff check app tests: All checks passed!
 ```
 
-Two regression tests, both against a `C`-collation database:
+Hai test hồi quy, đều chạy trên database collation `C`:
 
-- `test_duplicate_check_survives_a_c_locale_database` — asserts the stored key is exactly `"đạm urê phú mỹ"`, then rejects `"ĐẠM URÊ PHÚ MỸ"`, `"đạm urê phú mỹ"` and `"  Đạm Urê Phú Mỹ  "` with 409.
-- `test_unicode_composition_is_normalised` — builds NFC and NFD forms of the same name with `unicodedata` and asserts they collide. Built programmatically on purpose: typed as literals, an editor would silently re-normalise the source file and the test would pass without testing anything.
-
----
-
-## 5. Lesson for the Thesis Report
-
-**Test with the data the application will actually hold.** An ASCII test fixture (`"Urea"`, `"Fertilizer A"`) passes against this bug on every locale, on every machine, forever. The bug is only reachable through Vietnamese text — which is to say, through every single real row this system will ever store. A test suite written in English would have shipped a Vietnamese app that cannot tell `Đạm Urê` from `đạm urê`.
-
-**Locale is configuration, and correctness must not depend on configuration.** Anything decided at `initdb` time, in a Dockerfile, or by an installer's default is not a property of the code. It differs between the laptop, CI, and the server — so a bug that depends on it appears in exactly one of those three places, which is the hardest failure mode to diagnose. Where behaviour must be identical everywhere, compute it in the application and store the result.
-
-This is the same principle already applied twice elsewhere in the project, which is worth noting as a pattern rather than three coincidences:
-
-- **Dates** are stored as epoch-ms integers rather than `DATE`, so no timezone interpretation sits between the device and the server (§7.2).
-- **The local calendar day** is fixed integer arithmetic on a UTC+7 constant rather than a `timezone()` call, so it is immutable and indexable (§7.2).
-- **Case folding** is now Python `casefold()` stored in a column rather than SQL `lower()` evaluated per query.
-
-In each case the rule is the same: *push ambiguity out of the database boundary and pin it down in code that is versioned, tested, and identical on both sides of the sync.*
+- `test_duplicate_check_survives_a_c_locale_database` — khẳng định khoá lưu đúng bằng `"đạm urê phú mỹ"`, rồi từ chối `"ĐẠM URÊ PHÚ MỸ"`, `"đạm urê phú mỹ"` và `"  Đạm Urê Phú Mỹ  "` với mã 409.
+- `test_unicode_composition_is_normalised` — dựng dạng NFC và NFD của cùng một tên bằng `unicodedata` rồi khẳng định chúng va nhau. Dựng bằng code có chủ đích: nếu gõ thành chuỗi ký tự trực tiếp, trình soạn thảo sẽ âm thầm chuẩn hoá lại file nguồn và test sẽ pass mà không kiểm tra gì cả.
 
 ---
 
-*Related: [Data_Requirements_Database.md](Data_Requirements_Database.md) §5.5 (supplies), §8.3 (duplicate policy), §10.3 (uniqueness); [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) (the same class of "the database does not mean what you think" bug).*
+## 5. Bài học cho báo cáo đồ án
+
+**Hãy test bằng đúng loại dữ liệu mà ứng dụng sẽ chứa.** Một fixture ASCII (`"Urea"`, `"Fertilizer A"`) sẽ pass với lỗi này trên mọi locale, trên mọi máy, mãi mãi. Lỗi chỉ chạm tới được qua chữ tiếng Việt — tức là qua từng dòng dữ liệu thật mà hệ thống này sẽ lưu. Một bộ test viết bằng tiếng Anh sẽ cho ra đời một ứng dụng tiếng Việt không phân biệt nổi `Đạm Urê` với `đạm urê`.
+
+**Locale là cấu hình, và tính đúng đắn không được phụ thuộc vào cấu hình.** Bất cứ thứ gì quyết định ở thời điểm `initdb`, trong một Dockerfile, hay bởi mặc định của trình cài đặt, đều không phải thuộc tính của mã nguồn. Nó khác nhau giữa máy cá nhân, CI và máy chủ — nên một lỗi phụ thuộc vào nó sẽ chỉ hiện ra ở đúng một trong ba nơi, đó là kiểu hỏng khó chẩn đoán nhất. Ở đâu hành vi phải giống nhau khắp nơi, hãy tính trong ứng dụng và lưu kết quả lại.
+
+Đây cũng chính là nguyên tắc đã được áp dụng hai lần ở chỗ khác trong dự án, đáng ghi nhận là một khuôn mẫu chứ không phải ba sự trùng hợp:
+
+- **Ngày tháng** lưu dưới dạng số nguyên epoch-ms thay vì `DATE`, nên không có phép chuyển múi giờ nào chen giữa thiết bị và máy chủ (§7.2).
+- **Ngày lịch địa phương** là số học nguyên trên hằng số UTC+7 thay vì gọi `timezone()`, nên nó bất biến và đánh index được (§7.2).
+- **Hạ chữ** giờ là `casefold()` của Python lưu vào một cột, thay vì `lower()` của SQL tính lại mỗi truy vấn.
+
+Trong cả ba trường hợp, quy tắc là như nhau: *đẩy sự mơ hồ ra khỏi ranh giới database và ghim nó lại trong đoạn code được quản lý phiên bản, được kiểm thử, và giống hệt nhau ở hai phía của quá trình đồng bộ.*
+
+---
+
+*Liên quan: [Data_Requirements_Database.md](Data_Requirements_Database.md) §5.5 (bảng vật tư), §8.3 (chính sách trùng lặp), §10.3 (ràng buộc duy nhất); [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) (cùng một họ lỗi "database không hiểu như bạn nghĩ").*

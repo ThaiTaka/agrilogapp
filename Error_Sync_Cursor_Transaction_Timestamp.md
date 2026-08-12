@@ -1,15 +1,15 @@
-# Error Report — Sync pull cursor could silently skip records forever
+# Báo cáo sự cố — Con trỏ đồng bộ có thể bỏ sót bản ghi vĩnh viễn
 
-**Date:** 11 Aug 2026
-**Affects:** Issues #9 (sync contract), #31/#32 (push/pull), #40 (multi-device conflict testing)
-**Severity:** **Critical** — silent, permanent data loss. Caught before any client existed.
-**Status:** Fixed in migration `0001`. Regression test added. Residual window closed by a documented cursor safety margin.
+**Ngày:** 11/08/2026
+**Ảnh hưởng:** Issue #9 (contract đồng bộ), #31/#32 (push/pull), #40 (kiểm thử xung đột đa thiết bị)
+**Mức độ:** **Nghiêm trọng** — mất dữ liệu âm thầm, vĩnh viễn. Bắt được trước khi có bất kỳ client nào.
+**Trạng thái:** Đã sửa trong migration `0001`. Đã thêm test hồi quy. Khe hở còn lại được đóng bằng biên an toàn cho con trỏ.
 
 ---
 
-## 1. Error Description
+## 1. Mô tả lỗi
 
-The failing test:
+Test thất bại:
 
 ```
 FAILED tests/test_schema_integrity.py::TestTriggerKeepsPullCursorHonest
@@ -20,60 +20,60 @@ assert datetime(2026, 8, 11, 15, 7, 1, 815884, tzinfo=ZoneInfo('Asia/Bangkok'))
      > datetime(2026, 8, 11, 15, 7, 1, 815884, tzinfo=ZoneInfo('Asia/Bangkok'))
 ```
 
-The two timestamps are **identical to the microsecond**. An `INSERT` followed by an `UPDATE` on the same row, in the same transaction, produced the same `server_updated_at`.
+Hai mốc thời gian **giống hệt nhau đến từng micro-giây**. Một lệnh `INSERT` rồi `UPDATE` trên cùng một dòng, trong cùng một transaction, cho ra cùng một `server_updated_at`.
 
-The first instinct — "the trigger is not firing" — is wrong. The trigger fires correctly. The value it writes is wrong.
+Phản xạ đầu tiên — "trigger không chạy" — là sai. Trigger chạy đúng. Giá trị nó ghi mới là thứ sai.
 
 ---
 
-## 2. Root Cause
+## 2. Nguyên nhân gốc
 
-**`now()` in PostgreSQL is `transaction_timestamp()`, not the current time.**
+**`now()` trong PostgreSQL chính là `transaction_timestamp()`, không phải thời điểm hiện tại.**
 
-Every statement inside one transaction receives the moment the *transaction* began. This is documented, standard-mandated behaviour, and it is exactly what you want for `created_at`-style bookkeeping. It is exactly wrong for a cursor-based change feed.
+Mọi câu lệnh bên trong một transaction đều nhận thời điểm *transaction bắt đầu*. Đây là hành vi có tài liệu, đúng chuẩn SQL, và là chính xác thứ ta muốn cho các cột kiểu `created_at`. Nhưng nó hoàn toàn sai cho một luồng thay đổi dựa trên con trỏ.
 
-The original trigger:
+Trigger ban đầu:
 
 ```sql
 CREATE OR REPLACE FUNCTION touch_server_updated_at() RETURNS trigger AS $$
 BEGIN
-    NEW.server_updated_at := now();   -- transaction start time
+    NEW.server_updated_at := now();   -- thời điểm transaction bắt đầu
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 ```
 
-### Why this is data loss, not cosmetics
+### Vì sao đây là mất dữ liệu chứ không phải chuyện hình thức
 
-`server_updated_at` is the **pull cursor** (`Data_Requirements_Database.md` §6.5). The pull endpoint answers "give me everything changed since T", and the client stores the returned timestamp as its next cursor. A row whose `server_updated_at` is older than a cursor the client has already stored **will never be returned again**.
+`server_updated_at` **chính là con trỏ pull** (`Data_Requirements_Database.md` §6.5). Endpoint pull trả lời câu hỏi "cho tôi mọi thứ đã đổi sau thời điểm T", và client lưu mốc trả về làm con trỏ kế tiếp. Một dòng có `server_updated_at` cũ hơn con trỏ mà client đã lưu thì **sẽ không bao giờ được trả về nữa**.
 
 ```
              T1        T2      T3        T4         T5      T6
-Txn A     starts ───────────────────────────── writes ──── commits
-                                                (stamped T1)
-Txn B                starts ─── commits
-                                (stamped T2, visible from T3)
+Txn A     bắt đầu ────────────────────────────── ghi ──── commit
+                                                (đóng dấu T1)
+Txn B                bắt đầu ─── commit
+                                (đóng dấu T2, thấy được từ T3)
 
-Client PULL at T4  →  sees B's rows, stores cursor = T4
-Txn A commits at T6 →  its rows carry server_updated_at = T1
+Client PULL lúc T4  →  thấy dữ liệu của B, lưu con trỏ = T4
+Txn A commit lúc T6 →  dữ liệu của nó mang server_updated_at = T1
 
-Next PULL asks for  server_updated_at > T4
-   → A's rows (T1) do not match. They never will.
+Lần PULL sau hỏi     server_updated_at > T4
+   → dữ liệu của A (T1) không khớp. Và sẽ không bao giờ khớp.
 ```
 
-The farmer's diary entry exists in PostgreSQL, is visible in pgAdmin, and is **permanently invisible to every device**. Nothing errors. Nothing logs. The only symptom is a farmer insisting they recorded something that is not in the app — the least debuggable class of bug this project can produce.
+Nhật ký của nông dân nằm trong PostgreSQL, nhìn thấy được trong pgAdmin, và **vĩnh viễn vô hình với mọi thiết bị**. Không báo lỗi. Không ghi log. Triệu chứng duy nhất là nông dân khăng khăng họ đã ghi một thứ không có trong ứng dụng — loại lỗi khó gỡ nhất mà đồ án này có thể tạo ra.
 
-### Why it was caught
+### Vì sao bắt được
 
-Only because the test harness runs each test inside a single transaction that is rolled back afterwards. That made the INSERT and the UPDATE share a transaction, which is precisely the condition that exposes the flaw. Under manual testing — one HTTP request per transaction — `now()` and `clock_timestamp()` are indistinguishable, and this would have shipped.
+Chỉ vì bộ khung test chạy mỗi test bên trong một transaction rồi rollback. Điều đó khiến `INSERT` và `UPDATE` dùng chung một transaction — đúng điều kiện làm lộ ra khiếm khuyết. Khi test thủ công, mỗi request HTTP là một transaction, `now()` và `clock_timestamp()` không phân biệt được, và lỗi này đã lọt lưới.
 
-A per-request transaction is short. But a sync **push** applies an entire batch in one transaction by design (§6.6, atomicity requirement), and a device offline for three weeks can push hundreds of records. That transaction is long enough for a concurrent pull to step over it.
+Một transaction cho mỗi request thì ngắn. Nhưng **sync push cố ý áp cả lô trong một transaction** (§6.6, yêu cầu về tính nguyên tử), và một thiết bị offline ba tuần có thể đẩy lên hàng trăm bản ghi. Transaction đó đủ dài để một lần pull đồng thời bước qua nó.
 
 ---
 
-## 3. Exact Step-by-Step Fix
+## 3. Cách sửa từng bước
 
-### 3.1 Use statement time, not transaction time
+### 3.1 Dùng giờ câu lệnh, không dùng giờ transaction
 
 `backend/alembic/versions/0001_initial_schema.py`:
 
@@ -83,55 +83,51 @@ op.execute(
     CREATE OR REPLACE FUNCTION touch_server_updated_at() RETURNS trigger AS $$
     BEGIN
         NEW.server_updated_at := clock_timestamp();
-        RETURN NEW;
+    RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
     """
 )
 ```
 
-| Function | Returns | Constant within a transaction? |
+| Hàm | Trả về | Cố định trong một transaction? |
 |---|---|---|
-| `now()` / `transaction_timestamp()` | when the transaction began | yes ← the bug |
-| `statement_timestamp()` | when the current statement began | no |
-| `clock_timestamp()` | actual current time, per call | no ← correct |
+| `now()` / `transaction_timestamp()` | lúc transaction bắt đầu | có ← chính là lỗi |
+| `statement_timestamp()` | lúc câu lệnh hiện tại bắt đầu | không |
+| `clock_timestamp()` | thời gian thực, mỗi lần gọi | không ← đúng |
 
-`clock_timestamp()` is right rather than `statement_timestamp()` because a single `UPDATE ... WHERE` statement touching many rows should not stamp them all identically; per-row real time keeps the feed strictly ordered.
+Chọn `clock_timestamp()` thay vì `statement_timestamp()` vì một câu `UPDATE ... WHERE` chạm nhiều dòng thì không nên đóng dấu tất cả giống nhau; thời gian thực theo từng dòng giữ cho luồng thay đổi có thứ tự chặt chẽ.
 
-> **Migration 0001 was edited in place rather than superseded by 0002.** This is normally poor practice, but the migration had not been applied to any real database at the time of the fix — only to a throwaway test cluster. A follow-up revision would have left every future developer's `agrilog` database carrying a broken trigger for one revision. If you have already run `alembic upgrade head` against a database you care about, do **not** re-pull and assume you are fixed; run §3.4 instead.
+> **Migration 0001 được sửa tại chỗ thay vì tạo bản 0002.** Bình thường đây là thực hành không tốt, nhưng tại thời điểm sửa migration chưa từng chạy trên bất kỳ database thật nào — chỉ trên một cụm test tạm. Tạo bản sửa tiếp theo sẽ khiến database `agrilog` của mọi người sau này mang một trigger hỏng trong đúng một revision. **Nếu bạn đã chạy `alembic upgrade head` trên một database quan trọng**, đừng cho rằng pull code mới là xong — hãy chạy §3.4.
 
-### 3.2 Close the residual window with a cursor safety margin
+### 3.2 Đóng khe hở còn lại bằng biên an toàn cho con trỏ
 
-`clock_timestamp()` fixes the long-transaction case but not a subtler one: a row is *stamped* when written and only becomes *visible* when its transaction commits. A transaction that writes at T5 and commits at T8 is invisible to a pull running at T6 — which then stores cursor T6 and skips it.
+`clock_timestamp()` xử lý được trường hợp transaction dài, nhưng chưa xử lý một trường hợp tinh vi hơn: một dòng được *đóng dấu* khi ghi nhưng chỉ *thấy được* khi transaction commit. Một transaction ghi lúc T5 và commit lúc T8 là vô hình với lần pull chạy lúc T6 — lần pull đó lưu con trỏ T6 rồi bỏ qua dòng ấy mãi mãi.
 
-The pull endpoint therefore rewinds its cursor before querying. Added to `backend/app/core/config.py`:
+Vì vậy endpoint pull lùi con trỏ lại trước khi truy vấn. Thêm vào `backend/app/core/config.py`:
 
 ```python
 SYNC_CURSOR_SAFETY_MARGIN_MS: int = 2_000
 ```
 
-and the pull query (Issue #32) uses:
+**Gửi lại một dòng là vô hại.** ID bản ghi do client sinh (quy tắc R1) và client áp dụng thay đổi bằng upsert, nên pull trùng là thao tác rỗng. Thiết kế đánh đổi vài dòng dư mỗi lần đồng bộ lấy điều bất khả: mất một dòng.
 
-```python
-effective_cursor = last_pulled_at - settings.SYNC_CURSOR_SAFETY_MARGIN_MS
-```
+Biên phải lớn hơn transaction ghi dài nhất. 2 giây thừa sức bao một lô push 500 bản ghi; bài kiểm thử tải ở Issue #39 sẽ đo lại và xem xét con số này.
 
-**Re-delivering a row is harmless.** Record IDs are client-generated (rule R1) and the client applies changes as an upsert, so a duplicate pull is a no-op. The design trades a few redundant rows per sync for the impossibility of a lost one — the same trade already made in §6.5 for capturing `now_ts` before reading rather than after.
+> **Bổ sung phát hiện trong lúc cài đặt sync engine (#32):** biên an toàn chỉ được mở rộng phạm vi **phát hiện**. Nếu dùng con trỏ đã lùi để phân loại `created` với `updated` thì mọi bản ghi được gửi lại vì an toàn sẽ đến dưới dạng `created` cho một bản ghi mà client **đã có** — WatermelonDB báo đó là lỗi. Việc phân loại phải dùng `lastPulledAt` gốc chưa lùi.
 
-The margin must exceed the longest write transaction. 2 seconds comfortably covers a 500-record push batch; Issue #39's load test measures this and the value is revisited there.
-
-### 3.3 Regression test
+### 3.3 Test hồi quy
 
 `backend/tests/test_schema_integrity.py::test_cursor_advances_within_a_single_transaction`
-inserts two rows in one transaction and asserts their timestamps differ. It fails immediately if anyone reverts the trigger to `now()`.
+chèn hai dòng trong một transaction và khẳng định mốc thời gian của chúng khác nhau. Test thất bại ngay nếu ai đó đưa trigger về `now()`.
 
-### 3.4 If you already migrated a database
+### 3.4 Nếu bạn đã migrate một database rồi
 
-The trigger is replaced without touching data:
+Trigger được thay mà không đụng tới dữ liệu:
 
 ```powershell
 cd d:\agrilogapp\backend
-$env:PGPASSWORD = "<your postgres password>"
+$env:PGPASSWORD = "<mật khẩu postgres>"
 & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -d agrilog -c @"
 CREATE OR REPLACE FUNCTION touch_server_updated_at() RETURNS trigger AS `$`$
 BEGIN
@@ -143,40 +139,40 @@ END;
 Remove-Item Env:\PGPASSWORD
 ```
 
-`CREATE OR REPLACE FUNCTION` updates the function in place; the six triggers already point at it by name and need no changes.
+`CREATE OR REPLACE FUNCTION` thay hàm tại chỗ; sáu trigger đã trỏ tới nó theo tên nên không cần sửa gì thêm.
 
-Verify:
+Kiểm chứng:
 
 ```sql
 SELECT prosrc FROM pg_proc WHERE proname = 'touch_server_updated_at';
--- must contain clock_timestamp(), not now()
+-- phải chứa clock_timestamp(), không phải now()
 ```
 
 ---
 
-## 4. Verification
+## 4. Kiểm chứng
 
 ```
-102 passed in 10.64s          (was: 100 passed, 2 failed)
+102 passed in 10.64s          (trước đó: 100 passed, 2 failed)
 alembic downgrade base -> upgrade head -> current = 0001 (head)
 ruff check app tests: All checks passed!
 ```
 
 ---
 
-## 5. Lesson for the Thesis Report
+## 5. Bài học cho báo cáo đồ án
 
-This belongs in the report's *testing* chapter, because it is the clearest available evidence that the test strategy earns its cost.
+Phần này nên đưa vào chương *Kiểm thử*, vì nó là bằng chứng rõ ràng nhất cho thấy chiến lược kiểm thử xứng đáng với chi phí bỏ ra.
 
-The bug is invisible to every form of manual testing. Click through the app and it works. Sync a device and it works. It only appears when two operations share one transaction and a third party reads in between — a race that manual testing cannot reliably produce, and whose only symptom in production is a farmer saying "I definitely wrote that down."
+Lỗi này vô hình với mọi hình thức test thủ công. Bấm qua ứng dụng — chạy tốt. Đồng bộ một thiết bị — chạy tốt. Nó chỉ xuất hiện khi hai thao tác dùng chung một transaction và có bên thứ ba đọc vào giữa — một tình huống tranh chấp mà test thủ công không thể tái hiện đáng tin cậy, và triệu chứng duy nhất trong thực tế là câu nói của nông dân: "tôi ghi rồi mà".
 
-Two properties of the harness turned an unfindable production bug into a two-line diff:
+Hai đặc điểm của bộ khung test đã biến một lỗi không thể tìm ra thành một bản vá hai dòng:
 
-1. **Tests run inside a transaction that is rolled back.** Chosen for isolation and speed. It happened to reproduce the exact condition that exposes the flaw — a reminder that a good harness catches things it was not designed to catch.
-2. **The assertion was on behaviour, not existence.** A weaker test — "does a trigger named `trg_seasons_...` exist?" — passes against the broken version. Asserting that the timestamp *actually advances* is what caught it.
+1. **Test chạy trong transaction rồi rollback.** Chọn như vậy vì tính cô lập và tốc độ. Nó tình cờ tái hiện đúng điều kiện làm lộ khiếm khuyết — nhắc rằng một bộ khung tốt bắt được cả những thứ nó không được thiết kế để bắt.
+2. **Assertion đặt trên hành vi, không phải sự tồn tại.** Một test yếu hơn — "có trigger tên `trg_seasons_...` không?" — sẽ pass với phiên bản hỏng. Chính việc khẳng định mốc thời gian *thực sự tiến lên* mới bắt được lỗi.
 
-**Generalisable rule, now applied across the sync engine:** never assume a timestamp function returns the current time. In PostgreSQL, `now()` does not. Any monotonic-cursor design must state which clock it uses and why, and must tolerate re-delivery — because a feed that can skip is unfixable after the fact, while a feed that occasionally repeats is merely slightly wasteful.
+**Quy tắc tổng quát, nay đã áp dụng cho toàn bộ sync engine:** đừng bao giờ giả định một hàm thời gian trả về thời điểm hiện tại. Trong PostgreSQL, `now()` không làm vậy. Mọi thiết kế con trỏ đơn điệu phải nêu rõ nó dùng đồng hồ nào và vì sao, và phải chấp nhận được việc gửi lại — bởi một luồng có thể bỏ sót là không thể sửa sau khi đã bỏ sót, còn một luồng thỉnh thoảng lặp lại thì chỉ hơi lãng phí.
 
 ---
 
-*Related: [Data_Requirements_Database.md](Data_Requirements_Database.md) §6.1 (sync block), §6.5 (pull cursor contract), §6.6 (push atomicity).*
+*Liên quan: [Data_Requirements_Database.md](Data_Requirements_Database.md) §6.1 (khối cột đồng bộ), §6.5 (contract con trỏ pull), §6.6 (tính nguyên tử của push).*

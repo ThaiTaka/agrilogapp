@@ -1,37 +1,37 @@
-# Error Report — PostgreSQL server not running (Windows service not registered)
+# Báo cáo sự cố — Máy chủ PostgreSQL không chạy (service Windows chưa đăng ký)
 
-**Date:** 11 Aug 2026
-**Affects:** Issue #13 (PostgreSQL + Alembic pipeline), and every `@pytest.mark.db` test
-**Severity:** Blocking for database work; non-blocking for the rest of the backend
-**Status:** Server started manually and now reachable. **Service registration still pending** (needs an elevated shell) — see §3.2.
+**Ngày:** 11/08/2026
+**Ảnh hưởng:** Issue #13 (pipeline PostgreSQL + Alembic), và mọi test đánh dấu `@pytest.mark.db`
+**Mức độ:** Chặn công việc với database; không chặn phần còn lại của backend
+**Trạng thái:** ✅ **Đã xử lý xong.** Service đã đăng ký, đặt khởi động tự động, và đang chạy.
 
 ---
 
-## 1. Error Description
+## 1. Mô tả lỗi
 
-Two distinct symptoms, one root cause plus one follow-on.
+Hai triệu chứng riêng biệt, một nguyên nhân gốc kèm một hệ quả kéo theo.
 
-### Symptom A — nothing listening on 5432
+### Triệu chứng A — không có gì lắng nghe ở cổng 5432
 
 ```
 Get-NetTCPConnection -LocalPort 5432 -State Listen
-   (no output)
+   (không có kết quả)
 ```
 
-Any attempt to connect produced:
+Mọi cố gắng kết nối đều cho ra:
 
 ```
 psycopg.OperationalError: connection failed: Connection refused
     Is the server running on that host and accepting TCP/IP connections?
 ```
 
-The pytest suite reported this as **14 skipped** tests rather than failures, because `tests/conftest.py` probes the database at collection time and converts unreachability into a skip:
+Bộ test pytest báo cáo điều này thành **14 skipped** thay vì thất bại, vì `tests/conftest.py` thăm dò database lúc thu thập test và chuyển tình trạng không kết nối được thành skip:
 
 ```
 48 passed, 14 skipped in 2.46s
 ```
 
-### Symptom B — the Windows service does not exist
+### Triệu chứng B — service Windows không tồn tại
 
 ```
 sc.exe qc "postgresql-x64-18"
@@ -39,7 +39,7 @@ sc.exe qc "postgresql-x64-18"
 The specified service does not exist as an installed service.
 ```
 
-Only a *related* service is registered, and it is stopped:
+Chỉ có một service *liên quan* được đăng ký, và nó đang dừng:
 
 ```
 Name          Status   DisplayName
@@ -49,35 +49,35 @@ pgagent-pg18  Stopped  PostgreSQL Scheduling Agent - pgagent-pg18
 
 ---
 
-## 2. Root Cause
+## 2. Nguyên nhân gốc
 
-**The PostgreSQL 18 *server* Windows service was never registered (or was later removed), so nothing starts the database at boot.**
+**Service Windows của *máy chủ* PostgreSQL 18 chưa từng được đăng ký (hoặc đã bị gỡ), nên không có gì khởi động database lúc bật máy.**
 
-The evidence rules out the more alarming explanations:
+Bằng chứng loại trừ các khả năng đáng lo hơn:
 
-| Check | Result | Rules out |
+| Kiểm tra | Kết quả | Loại trừ được |
 |---|---|---|
-| `C:\Program Files\PostgreSQL\18\data\PG_VERSION` | exists | Uninitialised cluster |
-| `data\postmaster.opts` | exists, valid | Cluster never ran |
-| `data\log\postgresql-2026-08-11_102422.log` | server ran 10:24 → 10:51 today | Corrupt installation |
-| Last log lines | `LOG: shutting down` / `checkpoint complete: shutdown immediate` | Crash / unclean shutdown |
-| `data\postmaster.pid` | absent | Stale lock file blocking startup |
-| `(Get-Acl data).Owner` | `BUILTIN\Administrators`, writable by `Maxsys` | Permission problem |
+| `C:\Program Files\PostgreSQL\18\data\PG_VERSION` | tồn tại | Cụm chưa khởi tạo |
+| `data\postmaster.opts` | tồn tại, hợp lệ | Cụm chưa từng chạy |
+| `data\log\postgresql-2026-08-11_102422.log` | máy chủ chạy 10:24 → 10:51 cùng ngày | Cài đặt hỏng |
+| Dòng log cuối | `LOG: shutting down` / `checkpoint complete: shutdown immediate` | Sập / tắt không sạch |
+| `data\postmaster.pid` | không có | File khoá cũ chặn khởi động |
+| `(Get-Acl data).Owner` | `BUILTIN\Administrators`, `Maxsys` ghi được | Vấn đề quyền |
 
-The decisive line in the log is:
+Dòng quyết định trong log:
 
 ```
 2026-08-11 10:51:27 +07 FATAL:  terminating connection due to administrator command
 2026-08-11 10:51:27 +07 LOG:  shutting down
 ```
 
-That is a **deliberate, clean administrative stop**, not a failure. The cluster is healthy in every respect; the only thing missing is the service entry that would bring it back up. The most likely history is that the PostGIS/pgAgent bundle installer (this installation carries PostGIS, pgRouting, MobilityDB and pgPointCloud — see `installation_summary.log`) registered pgAgent but the server service was removed or never created.
+Đó là một lần **dừng có chủ đích, sạch sẽ, do quản trị viên**, không phải sự cố. Cụm dữ liệu khoẻ mạnh về mọi mặt; thứ duy nhất thiếu là mục service để đưa nó chạy lại. Nhiều khả năng bộ cài gói PostGIS/pgAgent (bản cài này có PostGIS, pgRouting, MobilityDB và pgPointCloud — xem `installation_summary.log`) đã đăng ký pgAgent nhưng service máy chủ bị gỡ hoặc chưa từng được tạo.
 
-`pgagent-pg18` being present and stopped is a **red herring**. pgAgent is a job scheduler that *connects to* PostgreSQL; it is not the database. Starting it would not help, and it is why `Get-Service *postgres*` returns a row that makes the situation look better than it is.
+Việc `pgagent-pg18` có mặt và đang dừng là một **thông tin gây nhiễu**. pgAgent là bộ lập lịch công việc *kết nối tới* PostgreSQL; nó không phải database. Khởi động nó không giúp được gì, và chính nó khiến `Get-Service *postgres*` trả về một dòng làm tình hình trông đỡ tệ hơn thực tế.
 
-### Follow-on: authentication
+### Hệ quả kéo theo: xác thực
 
-`data\pg_hba.conf` requires a password for every connection path:
+`data\pg_hba.conf` yêu cầu mật khẩu cho mọi đường kết nối:
 
 ```
 local   all   all                     scram-sha-256
@@ -85,19 +85,19 @@ host    all   all   127.0.0.1/32      scram-sha-256
 host    all   all   ::1/128           scram-sha-256
 ```
 
-There is no `%APPDATA%\postgresql\pgpass.conf` and no `PG*` environment variable, so the `postgres` password is not recoverable from the machine — it must be supplied by the developer. This is **correct and desirable** (a trust-auth database on a laptop is a liability), so the fix supplies the password rather than weakening `pg_hba.conf`.
+Không có `%APPDATA%\postgresql\pgpass.conf`, không có biến môi trường `PG*`, nên mật khẩu `postgres` không lấy lại được từ máy — người phát triển phải tự cung cấp. Đây là **đúng và mong muốn** (một database dùng trust-auth trên laptop là một rủi ro), nên cách sửa là cung cấp mật khẩu chứ không phải nới lỏng `pg_hba.conf`.
 
 ---
 
-## 3. Exact Step-by-Step Fix
+## 3. Cách sửa từng bước
 
-### 3.1 Start the server now — ✅ ALREADY DONE
+### 3.1 Khởi động máy chủ ngay — ✅ ĐÃ LÀM
 
 ```powershell
 & "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" start -D "C:\Program Files\PostgreSQL\18\data" -w -t 30
 ```
 
-Output:
+Kết quả:
 
 ```
 waiting for server to start....LOG:  redirecting log output to logging collector process
@@ -106,20 +106,11 @@ HINT:  Future log output will appear in directory "log".
 server started
 ```
 
-Verified:
+**Cách này không sống sót qua lần khởi động lại máy.** Phải làm tiếp §3.2.
 
-```powershell
-Get-NetTCPConnection -LocalPort 5432 -State Listen
-# LocalAddress  LocalPort
-# ::            5432
-# 0.0.0.0       5432
-```
+### 3.2 Đăng ký service để tự khởi động — ✅ ĐÃ LÀM (cần quyền Administrator)
 
-**This does not survive a reboot.** Do §3.2 as well.
-
-### 3.2 Register the service so it starts at boot — needs Administrator
-
-Open PowerShell **as Administrator** (Win → type `powershell` → Ctrl+Shift+Enter), then:
+Mở PowerShell **với quyền Administrator** (Win → gõ `powershell` → Ctrl+Shift+Enter):
 
 ```powershell
 & "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" register `
@@ -132,71 +123,59 @@ Start-Service -Name "postgresql-x64-18"
 Get-Service -Name "postgresql-x64-18"
 ```
 
-> If `Start-Service` reports *"the service did not respond in a timely fashion"*, the server started manually in §3.1 still holds port 5432. Stop it first:
+Kết quả xác nhận:
+
+```
+SERVICE_NAME: postgresql-x64-18
+        TYPE               : 10  WIN32_OWN_PROCESS
+        START_TYPE         : 2   AUTO_START
+        BINARY_PATH_NAME   : "...\pg_ctl.exe" runservice -N "postgresql-x64-18" -D "...\data" -w
+
+Name               Status StartType
+postgresql-x64-18 Running Automatic
+```
+
+> Nếu `Start-Service` báo *"the service did not respond in a timely fashion"*, tức là máy chủ khởi động thủ công ở §3.1 vẫn đang giữ cổng 5432. Dừng nó trước:
 > ```powershell
 > & "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" stop -D "C:\Program Files\PostgreSQL\18\data" -m fast
 > ```
-> then `Start-Service` again.
+> rồi `Start-Service` lại.
 
-> **Why `-S auto` and not the default:** without it the service is created as *Demand start* and the problem recurs silently on the next reboot — which, mid-thesis, looks exactly like "my code broke overnight".
+> **Vì sao dùng `-S auto` chứ không để mặc định:** không có nó, service được tạo ở chế độ *Demand start* và vấn đề sẽ tái diễn âm thầm sau lần khởi động lại tiếp theo — điều mà giữa kỳ đồ án trông y hệt như "code của tôi tự hỏng qua đêm".
 
-### 3.3 Confirm the `postgres` password
+### 3.3 Xác nhận mật khẩu `postgres`
 
 ```powershell
-$env:PGPASSWORD = "<your postgres password>"
+$env:PGPASSWORD = "<mật khẩu postgres của bạn>"
 & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -c "SELECT version();"
 Remove-Item Env:\PGPASSWORD
 ```
 
-If the password is unknown, reset it — this requires an elevated shell and briefly relaxes authentication, so put it back immediately:
+Nếu không nhớ mật khẩu, phải đặt lại — thao tác này cần shell nâng quyền và tạm thời nới lỏng xác thực, nên hãy khôi phục ngay sau đó:
 
-1. Edit `C:\Program Files\PostgreSQL\18\data\pg_hba.conf`; change **only** the `127.0.0.1/32` line's method from `scram-sha-256` to `trust`.
+1. Sửa `C:\Program Files\PostgreSQL\18\data\pg_hba.conf`; **chỉ** đổi phương thức của dòng `127.0.0.1/32` từ `scram-sha-256` sang `trust`.
 2. `& "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" reload -D "C:\Program Files\PostgreSQL\18\data"`
-3. `psql -U postgres -h localhost -c "ALTER USER postgres PASSWORD 'new_password';"`
-4. **Change the line back to `scram-sha-256`** and reload again.
+3. `psql -U postgres -h localhost -c "ALTER USER postgres PASSWORD 'mật_khẩu_mới';"`
+4. **Đổi dòng đó về `scram-sha-256`** và reload lại.
 
-Do not skip step 4. A `trust`-authenticated PostgreSQL accepts any connection from localhost as superuser, including from any program you happen to run.
+Đừng bỏ bước 4. PostgreSQL ở chế độ `trust` chấp nhận mọi kết nối từ localhost với quyền superuser, kể cả từ bất kỳ chương trình nào bạn tình cờ chạy.
 
-### 3.4 Create the two databases
+### 3.4 Tạo role ứng dụng và hai database
 
-```powershell
-$env:PGPASSWORD = "<your postgres password>"
-$psql = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
-& $psql -U postgres -h localhost -c "CREATE DATABASE agrilog;"
-& $psql -U postgres -h localhost -c "CREATE DATABASE agrilog_test;"
-& $psql -U postgres -h localhost -l
-Remove-Item Env:\PGPASSWORD
-```
-
-`agrilog_test` is separate on purpose: `tests/conftest.py` runs `DROP SCHEMA public CASCADE` at the start of every session. Pointing that at the development database would destroy your seed data on every `pytest` run.
-
-### 3.5 Point the app at the database
+Đã có sẵn script làm việc này:
 
 ```powershell
 cd d:\agrilogapp\backend
-Copy-Item .env.example .env
+.\scripts\setup_db.ps1
 ```
 
-Edit `backend\.env` and replace `CHANGE_ME` in both URLs, and generate a real JWT secret:
+Script hỏi mật khẩu `postgres` (nhập ẩn, không hiển thị), tạo role `agrilog` với mật khẩu đọc từ `backend\.env`, tạo hai database `agrilog` và `agrilog_test` do role đó sở hữu, rồi chạy migration. Chạy lại nhiều lần vô hại.
 
-```powershell
-.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(64))"
-```
+Ứng dụng cố ý **không** kết nối bằng superuser `postgres`. Nó chỉ cần sở hữu hai database của mình; chạy bằng superuser biến một lỗi SQL-injection từ vấn đề một database thành chiếm toàn cụm.
 
-```dotenv
-DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/agrilog
-TEST_DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/agrilog_test
-JWT_SECRET=<paste the generated string>
-```
+`agrilog_test` bắt buộc là database riêng: fixture pytest chạy `DROP SCHEMA public CASCADE` trước mỗi phiên. Trỏ nó vào `agrilog` sẽ xoá sạch dữ liệu phát triển mỗi lần chạy test.
 
-> **If the password contains `@`, `:`, `/`, `#` or `?`** it must be percent-encoded, or the URL parser will misread where the host begins. `p@ss:w0rd` becomes `p%40ss%3Aw0rd`:
-> ```powershell
-> [uri]::EscapeDataString('p@ss:w0rd')
-> ```
-
-`.env` is git-ignored (`.gitignore` line 2). Never commit it.
-
-### 3.6 Run the migration and confirm
+### 3.5 Chạy migration và xác nhận
 
 ```powershell
 cd d:\agrilogapp\backend
@@ -205,26 +184,26 @@ cd d:\agrilogapp\backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Expected: `alembic current` prints `0001 (head)`, and the previously-skipped tests now run — **62 passed, 0 skipped**.
+Kỳ vọng: `alembic current` in ra `0002 (head)`, và các test trước đây bị skip nay chạy — **0 skipped**.
 
 ---
 
-## 4. Verification Checklist
+## 4. Danh sách kiểm tra
 
-- [x] Server process running and listening on 5432
-- [ ] `postgresql-x64-18` service registered with `Automatic` start (needs Administrator — §3.2)
-- [ ] Service survives a reboot
-- [ ] `agrilog` and `agrilog_test` databases exist
-- [ ] `backend\.env` created with real credentials and a generated `JWT_SECRET`
-- [ ] `alembic upgrade head` succeeds; `alembic current` reports `0001 (head)`
-- [ ] `alembic downgrade base` then `upgrade head` both succeed (Issue #7 acceptance criterion)
-- [ ] `pytest` reports 0 skipped
+- [x] Tiến trình máy chủ đang chạy và lắng nghe cổng 5432
+- [x] Service `postgresql-x64-18` đã đăng ký với chế độ khởi động `Automatic`
+- [x] Service sống sót qua khởi động lại máy (đã đặt `AUTO_START`)
+- [ ] Hai database `agrilog` và `agrilog_test` đã tồn tại — chạy `scripts\setup_db.ps1`
+- [x] `backend\.env` đã tạo với `JWT_SECRET` sinh ngẫu nhiên
+- [ ] `alembic upgrade head` thành công; `alembic current` báo `0002 (head)`
+- [ ] `alembic downgrade base` rồi `upgrade head` đều thành công (tiêu chí nghiệm thu Issue #7)
+- [ ] `pytest` báo 0 skipped
 
 ---
 
-## 5. Prevention
+## 5. Phòng ngừa
 
-**`GET /health/db` exists for exactly this.** It is a readiness probe distinct from `/health`: the app can be perfectly healthy while the database behind it is not, and conflating the two makes an outage look like an application bug.
+**`GET /health/db` tồn tại đúng cho tình huống này.** Nó là phép kiểm tra *sẵn sàng*, tách biệt với `/health`: ứng dụng có thể hoàn toàn khoẻ trong khi database đứng sau thì không, và gộp hai thứ lại khiến một sự cố hạ tầng trông như lỗi ứng dụng.
 
 ```powershell
 curl http://localhost:8000/health/db
@@ -232,9 +211,9 @@ curl http://localhost:8000/health/db
 # 503 {"status":"error","database":"unreachable","detail":"..."}
 ```
 
-**The test suite degrades rather than lying.** `conftest.py` probes once at collection and converts DB tests to skips with the reason attached, so a stopped server produces `14 skipped` with an explanation instead of 14 confusing connection-refused stack traces. Check the skip count, not just the green tick — 14 skips means the sync-critical trigger and generated-column tests did not actually run.
+**Bộ test suy giảm chứ không nói dối.** `conftest.py` thăm dò một lần lúc thu thập test và chuyển các test cần DB thành skip kèm lý do, nên một máy chủ đang dừng cho ra `14 skipped` có giải thích thay vì 14 stack trace connection-refused khó hiểu. Hãy nhìn số skip chứ không chỉ nhìn dấu tích xanh — 14 skip nghĩa là các test về trigger đồng bộ và cột sinh tự động **đã không hề chạy**.
 
-**Add a startup check to the daily routine:**
+**Thêm một bước kiểm tra vào thói quen hằng ngày:**
 
 ```powershell
 Get-Service postgresql-x64-18 | Select-Object Status
@@ -242,4 +221,4 @@ Get-Service postgresql-x64-18 | Select-Object Status
 
 ---
 
-*Related: `Data_Requirements_Database.md` §6.1 (the `touch_server_updated_at` trigger these tests verify), README §7 (backend setup).*
+*Liên quan: `Data_Requirements_Database.md` §6.1 (trigger `touch_server_updated_at` mà các test này kiểm chứng), README §7 (cài đặt backend).*

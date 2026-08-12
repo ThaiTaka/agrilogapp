@@ -1,121 +1,121 @@
-# Data Requirements — Database Layer
+# Yêu cầu dữ liệu — Tầng cơ sở dữ liệu
 
-**Module:** Persistence (PostgreSQL system-of-record + WatermelonDB local store)
-**Covers issues:** #6 (PostgreSQL schema), #7 (SQLAlchemy + Alembic), #8 (WatermelonDB local schema), #9 (sync contract data shape)
-**Status:** Design frozen — implementation follows in `backend/app/models/` and `mobile/src/db/schema.ts`
-**Author:** Lê Thành Thái (2212456) · AI-assisted design (Claude)
-
----
-
-## Table of Contents
-
-1. [Purpose & Scope](#1-purpose--scope)
-2. [Design Rules That Constrain Every Table](#2-design-rules-that-constrain-every-table)
-3. [Entity Relationship Diagram](#3-entity-relationship-diagram)
-4. [Enumerations](#4-enumerations)
-5. [Table Specifications](#5-table-specifications)
-6. [Offline-Sync Metadata Requirements](#6-offline-sync-metadata-requirements)
-7. [PostgreSQL ↔ WatermelonDB Type Parity](#7-postgresql--watermelondb-type-parity)
-8. [Referential Integrity Under Sync](#8-referential-integrity-under-sync)
-9. [Derived Values & Business Invariants](#9-derived-values--business-invariants)
-10. [Index Plan](#10-index-plan)
-11. [Reporting Query Requirements](#11-reporting-query-requirements)
-12. [Seed Data for Local Development](#12-seed-data-for-local-development)
-13. [Open Decisions Recorded](#13-open-decisions-recorded)
+**Module:** Lưu trữ (PostgreSQL là hệ thống chính + WatermelonDB là kho cục bộ)
+**Bao phủ issue:** #6 (schema PostgreSQL), #7 (SQLAlchemy + Alembic), #8 (schema WatermelonDB), #9 (hình dạng dữ liệu của contract đồng bộ)
+**Trạng thái:** Thiết kế đã chốt — cài đặt tại `backend/app/models/` và `mobile/src/db/schema.ts`
+**Tác giả:** Lê Thành Thái (2212456) · Thiết kế có AI hỗ trợ (Claude)
 
 ---
 
-## 1. Purpose & Scope
+## Mục lục
 
-This document is the single authoritative description of AgriLog's data model. Both sides of the stack are generated from it:
+1. [Mục đích và phạm vi](#1-mục-đích-và-phạm-vi)
+2. [Năm quy tắc ràng buộc mọi bảng](#2-năm-quy-tắc-ràng-buộc-mọi-bảng)
+3. [Sơ đồ quan hệ thực thể (ERD)](#3-sơ-đồ-quan-hệ-thực-thể-erd)
+4. [Các tập giá trị liệt kê](#4-các-tập-giá-trị-liệt-kê)
+5. [Đặc tả từng bảng](#5-đặc-tả-từng-bảng)
+6. [Yêu cầu metadata đồng bộ](#6-yêu-cầu-metadata-đồng-bộ)
+7. [Song song kiểu dữ liệu PostgreSQL ↔ WatermelonDB](#7-song-song-kiểu-dữ-liệu-postgresql--watermelondb)
+8. [Toàn vẹn tham chiếu khi đồng bộ](#8-toàn-vẹn-tham-chiếu-khi-đồng-bộ)
+9. [Giá trị dẫn xuất và bất biến nghiệp vụ](#9-giá-trị-dẫn-xuất-và-bất-biến-nghiệp-vụ)
+10. [Kế hoạch đánh index](#10-kế-hoạch-đánh-index)
+11. [Yêu cầu truy vấn báo cáo](#11-yêu-cầu-truy-vấn-báo-cáo)
+12. [Dữ liệu mẫu cho môi trường phát triển](#12-dữ-liệu-mẫu-cho-môi-trường-phát-triển)
+13. [Các quyết định được ghi nhận](#13-các-quyết-định-được-ghi-nhận)
 
-| Consumer | Artefact | Must match this doc on |
+---
+
+## 1. Mục đích và phạm vi
+
+Tài liệu này là mô tả có thẩm quyền duy nhất về mô hình dữ liệu của AgriLog. Cả hai phía của hệ thống đều sinh ra từ đây:
+
+| Bên sử dụng | Sản phẩm | Phải khớp với tài liệu này về |
 |---|---|---|
-| Backend | `backend/app/models/*.py` (SQLAlchemy 2.0) | table names, column names, types, constraints, indexes |
-| Backend | `backend/alembic/versions/*.py` | the DDL that materialises the above |
-| Mobile | `mobile/src/db/schema.ts` (WatermelonDB) | table names, column names, JS-side types |
-| Mobile | `mobile/src/db/models/*.ts` | field ↔ column mapping via `@field` / `@date` decorators |
-| Sync | `backend/app/services/sync_service.py` | the exact set of syncable tables and their column whitelists |
+| Backend | `backend/app/models/*.py` (SQLAlchemy 2.0) | tên bảng, tên cột, kiểu, ràng buộc, index |
+| Backend | `backend/alembic/versions/*.py` | câu lệnh DDL hiện thực hoá những thứ trên |
+| Mobile | `mobile/src/db/schema.ts` (WatermelonDB) | tên bảng, tên cột, kiểu phía JS |
+| Mobile | `mobile/src/db/models/*.ts` | ánh xạ trường ↔ cột qua decorator `@field` / `@date` |
+| Đồng bộ | `backend/app/services/sync_service.py` | tập bảng được đồng bộ và danh sách cột cho phép |
 
-**A field-name mismatch between the two schemas is the single highest-probability cause of a silent sync bug in this project.** Every column below is therefore specified with the *identical* snake_case name on both sides. There are no renames, no camelCase on the wire, and no server-only columns inside a sync payload.
+**Lệch tên trường giữa hai schema là nguyên nhân có xác suất cao nhất gây ra lỗi đồng bộ âm thầm trong đồ án này.** Vì vậy mọi cột dưới đây đều được đặc tả với tên snake_case *giống hệt nhau* ở cả hai phía. Không đổi tên, không camelCase trên đường truyền, và không có cột chỉ-thuộc-máy-chủ nào lọt vào payload đồng bộ.
 
-### What is in scope
+### Trong phạm vi
 
-Seven **synced** tables (they live on the device and cross the sync boundary) and four **server-only** tables (authentication, audit, and operational data that a device never needs to own).
+Sáu bảng **được đồng bộ** (nằm trên thiết bị và đi qua ranh giới đồng bộ) và bốn bảng **chỉ ở máy chủ** (xác thực, kiểm toán, dữ liệu vận hành mà thiết bị không cần sở hữu).
 
-### What is deliberately out of scope
+### Cố ý nằm ngoài phạm vi
 
-- Multi-tenant sharing between households (each household's data is fully isolated; there is no cross-household read path).
-- Photo/attachment storage on diary entries. The proposal does not require it, and binary sync would add substantial complexity to the sync engine. Recorded in §13 as an explicit non-goal.
-- Server-side soft-delete purging / GDPR-style erasure. Tombstones are retained for the lifetime of the project.
+- Chia sẻ dữ liệu giữa nhiều nông hộ (dữ liệu mỗi hộ hoàn toàn cô lập, không có đường đọc chéo).
+- Lưu ảnh / tệp đính kèm cho nhật ký. Đề cương không yêu cầu, và đồng bộ dữ liệu nhị phân sẽ làm sync engine phức tạp lên đáng kể. Ghi lại ở §13 như một mục tiêu không theo đuổi.
+- Xoá vĩnh viễn dữ liệu phía máy chủ. Bia mộ (tombstone) được giữ suốt vòng đời đồ án.
 
 ---
 
-## 2. Design Rules That Constrain Every Table
+## 2. Năm quy tắc ràng buộc mọi bảng
 
-These five rules are not negotiable per-table; they are why the columns in §5 look the way they do.
+Năm quy tắc này không thương lượng theo từng bảng; chúng là lý do các cột ở §5 trông như vậy.
 
-### R1 — Client-generated primary keys
+### R1 — Khoá chính do client sinh
 
-Every synced record's `id` is created **on the device**, at insert time, before the network is ever consulted.
+`id` của mọi bản ghi được đồng bộ được tạo **trên thiết bị**, ngay lúc chèn, trước khi hỏi tới mạng.
 
-- Type: `VARCHAR(36)`, holding a lowercase UUID v4 string.
-- WatermelonDB's default generator produces a 16-character random string. We override it (`setGenerator`) so that mobile IDs are RFC-4122 UUIDs, matching what the backend's seed script and any future web client produce.
-- **Why:** this is what makes a retried push safe. The push handler upserts on a key the client already owns, so re-sending an identical batch after a dropped connection cannot create a second row. With server-assigned IDs, an interrupted push is genuinely ambiguous and duplicates become unavoidable.
+- Kiểu: `VARCHAR(36)`, chứa chuỗi UUID v4 chữ thường.
+- Bộ sinh mặc định của WatermelonDB tạo chuỗi ngẫu nhiên 16 ký tự. Ta ghi đè (`setGenerator`) để ID phía mobile là UUID theo RFC-4122, khớp với thứ mà script seed của backend và mọi client web tương lai tạo ra.
+- **Vì sao:** đây là điều làm cho việc gửi lại một lần push trở nên an toàn. Bộ xử lý push upsert theo khoá mà client đã sở hữu, nên gửi lại đúng lô cũ sau khi rớt mạng không thể tạo dòng thứ hai. Với ID do máy chủ sinh, một lần push bị gián đoạn là thực sự nhập nhằng và trùng lặp trở nên không tránh khỏi.
 
-### R2 — Two clocks, two purposes
+### R2 — Hai đồng hồ, hai nhiệm vụ
 
-Every synced table carries both a *client* timestamp and a *server* timestamp, and they are never used for each other's job.
+Mọi bảng được đồng bộ mang cả mốc thời gian *của client* lẫn *của máy chủ*, và chúng không bao giờ làm thay việc của nhau.
 
-| Column | Clock | Used for |
+| Cột | Đồng hồ | Dùng để |
 |---|---|---|
-| `updated_at` (BIGINT, epoch ms) | Device | Last-write-wins conflict comparison; travels in the sync payload |
-| `server_updated_at` (TIMESTAMPTZ) | PostgreSQL `now()` | The pull cursor; **never** sent to the client as a record field |
+| `updated_at` (BIGINT, epoch ms) | Thiết bị | So sánh ghi-sau-thắng khi xung đột; đi trong payload đồng bộ |
+| `server_updated_at` (TIMESTAMPTZ) | PostgreSQL `clock_timestamp()` | Con trỏ pull; **không bao giờ** gửi cho client |
 
-**Why two:** the pull cursor must be monotonic and trustworthy. A farmer's phone with a wrong system date must not be able to write a record stamped `2030-01-01` and thereby make itself invisible to every future pull. The cursor is therefore always server time. But *conflict* resolution genuinely wants to know which human edit happened later, which is device time — so that stays on the client clock, with a skew guard (see §6.4).
+**Vì sao cần hai:** con trỏ pull phải đơn điệu và đáng tin. Điện thoại của nông dân bị sai ngày hệ thống không được phép ghi một bản ghi đóng dấu `2030-01-01` rồi tự làm mình vô hình với mọi lần pull về sau. Vì vậy con trỏ luôn là giờ máy chủ. Nhưng việc *giải quyết xung đột* thì thực sự muốn biết chỉnh sửa nào của con người xảy ra sau, tức là giờ thiết bị — nên nó ở lại đồng hồ client, kèm một cơ chế kẹp sai lệch (xem §6.4).
 
-### R3 — Soft delete only
+### R3 — Chỉ xoá mềm
 
-No synced row is ever removed with `DELETE`. Deletion sets `deleted_at = now()` (server clock) and bumps `server_updated_at`.
+Không dòng dữ liệu được đồng bộ nào bị `DELETE`. Xoá là đặt `deleted_at = clock_timestamp()` (giờ máy chủ) và đẩy `server_updated_at` lên.
 
-**Why:** a hard delete is invisible to a device that was offline when it happened. The pull endpoint has to be able to answer "what was destroyed since your cursor?", which requires a tombstone to survive.
+**Vì sao:** xoá cứng là vô hình với thiết bị đang offline lúc đó. Endpoint pull phải trả lời được câu hỏi "sau con trỏ của bạn, những gì đã bị xoá?", và câu hỏi đó cần một bia mộ còn sống sót.
 
-### R4 — Every synced row is household-scoped
+### R4 — Mọi dòng được đồng bộ đều thuộc về một nông hộ
 
-Every synced table has a non-null `household_id`. Every query in the API layer, without exception, filters on the authenticated household. There is no endpoint that can return another household's row.
+Mọi bảng được đồng bộ đều có `household_id` không null. Mọi truy vấn ở tầng API, không ngoại lệ, đều lọc theo nông hộ đã xác thực. Không có endpoint nào có thể trả về dòng dữ liệu của hộ khác.
 
-### R5 — Money and quantity are explicit
+### R5 — Tiền và số lượng phải tường minh
 
-- Money: `NUMERIC(16, 2)`, denominated in **VND**. Sixteen digits comfortably covers a season's revenue in đồng.
-- Quantity: `NUMERIC(14, 3)` — three decimals handles `0.250 kg`, `12.500 L`, `1.750 bao`.
-- On the client both become JavaScript `number` (IEEE-754 float64). See §7 for the precision analysis and the rounding contract.
+- Tiền: `NUMERIC(16, 2)`, đơn vị **VND**. Mười sáu chữ số thừa sức bao doanh thu một vụ tính bằng đồng.
+- Số lượng: `NUMERIC(14, 3)` — ba chữ số thập phân đủ cho `0.250 kg`, `12.500 L`, `1.750 bao`.
+- Phía client cả hai đều thành `number` của JavaScript (IEEE-754 float64). Xem §7 để biết phân tích độ chính xác và hợp đồng làm tròn.
 
 ---
 
-## 3. Entity Relationship Diagram
+## 3. Sơ đồ quan hệ thực thể (ERD)
 
 ```mermaid
 erDiagram
-    HOUSEHOLDS ||--o{ USERS : "has login accounts"
-    HOUSEHOLDS ||--o{ SEASONS : owns
-    HOUSEHOLDS ||--o{ SUPPLIES : owns
-    HOUSEHOLDS ||--o{ DIARY_ENTRIES : owns
-    HOUSEHOLDS ||--o{ STOCK_TRANSACTIONS : owns
-    HOUSEHOLDS ||--o{ EXPENSES : owns
-    HOUSEHOLDS ||--o{ REVENUES : owns
-    HOUSEHOLDS ||--o{ SYNC_SESSIONS : "audit log"
+    HOUSEHOLDS ||--o{ USERS : "có tài khoản đăng nhập"
+    HOUSEHOLDS ||--o{ SEASONS : "sở hữu"
+    HOUSEHOLDS ||--o{ SUPPLIES : "sở hữu"
+    HOUSEHOLDS ||--o{ DIARY_ENTRIES : "sở hữu"
+    HOUSEHOLDS ||--o{ STOCK_TRANSACTIONS : "sở hữu"
+    HOUSEHOLDS ||--o{ EXPENSES : "sở hữu"
+    HOUSEHOLDS ||--o{ REVENUES : "sở hữu"
+    HOUSEHOLDS ||--o{ SYNC_SESSIONS : "nhật ký đồng bộ"
 
-    USERS ||--o{ REFRESH_TOKENS : issues
+    USERS ||--o{ REFRESH_TOKENS : "phát hành"
 
-    SEASONS ||--o{ DIARY_ENTRIES : "work logged against"
-    SEASONS ||--o{ EXPENSES : "cost allocated to"
-    SEASONS ||--o{ REVENUES : "income allocated to"
-    SEASONS ||--o{ STOCK_TRANSACTIONS : "consumption allocated to"
+    SEASONS ||--o{ DIARY_ENTRIES : "ghi công việc cho"
+    SEASONS ||--o{ EXPENSES : "phân bổ chi phí"
+    SEASONS ||--o{ REVENUES : "phân bổ doanh thu"
+    SEASONS ||--o{ STOCK_TRANSACTIONS : "phân bổ tiêu thụ"
 
-    SUPPLIES ||--o{ STOCK_TRANSACTIONS : "moved by"
+    SUPPLIES ||--o{ STOCK_TRANSACTIONS : "được ghi nhận qua"
 
-    DIARY_ENTRIES ||--o{ STOCK_TRANSACTIONS : "consumes (auto stock-out)"
-    STOCK_TRANSACTIONS ||--o| EXPENSES : "auto-generates (1:1)"
+    DIARY_ENTRIES ||--o{ STOCK_TRANSACTIONS : "tiêu thụ (tự động xuất kho)"
+    STOCK_TRANSACTIONS ||--o| EXPENSES : "tự sinh chi phí (1:1)"
 
     HOUSEHOLDS {
         uuid id PK
@@ -130,7 +130,7 @@ erDiagram
     USERS {
         uuid id PK
         uuid household_id FK
-        citext email UK
+        varchar email UK
         text full_name
         text password_hash
         bool is_active
@@ -141,37 +141,39 @@ erDiagram
     REFRESH_TOKENS {
         uuid id PK
         uuid user_id FK
-        text token_hash UK
+        varchar token_hash UK
         text device_id
         timestamptz expires_at
         timestamptz revoked_at
     }
 
     SEASONS {
-        varchar id PK "client UUID"
+        varchar id PK "UUID client"
         uuid household_id FK
         text name
         text crop_type
         numeric area_size
-        text area_unit
+        varchar area_unit
         bigint start_date "epoch ms"
         bigint end_date "epoch ms"
-        text status "enum"
+        varchar status "enum"
         text note
-        bigint created_at "epoch ms, device"
-        bigint updated_at "epoch ms, device"
+        bigint created_at "epoch ms, thiết bị"
+        bigint updated_at "epoch ms, thiết bị"
         timestamptz server_updated_at
         timestamptz deleted_at
     }
 
     SUPPLIES {
-        varchar id PK "client UUID"
+        varchar id PK "UUID client"
         uuid household_id FK
         text name
-        text category "enum"
-        text unit
-        numeric unit_cost "VND per unit"
+        varchar name_key "casefold, chỉ máy chủ"
+        varchar category "enum"
+        varchar unit
+        numeric unit_cost "VND mỗi đơn vị"
         numeric low_stock_threshold
+        bool is_archived
         text note
         bigint created_at
         bigint updated_at
@@ -180,16 +182,17 @@ erDiagram
     }
 
     STOCK_TRANSACTIONS {
-        varchar id PK "client UUID"
+        varchar id PK "UUID client"
         uuid household_id FK
         varchar supply_id FK
-        varchar season_id FK "nullable"
-        varchar diary_entry_id FK "nullable"
-        text txn_type "enum in|out|adjust"
-        numeric quantity "always positive"
-        numeric unit_cost "snapshot at txn time"
+        varchar season_id FK "cho phép null"
+        varchar diary_entry_id FK "cho phép null"
+        varchar txn_type "enum in|out|adjust"
+        numeric quantity "luôn dương với in/out"
+        numeric unit_cost "chụp ảnh tại thời điểm giao dịch"
         numeric total_cost "quantity * unit_cost"
         bigint txn_date "epoch ms"
+        int txn_day_local "cột sinh"
         text note
         bigint created_at
         bigint updated_at
@@ -198,14 +201,15 @@ erDiagram
     }
 
     DIARY_ENTRIES {
-        varchar id PK "client UUID"
+        varchar id PK "UUID client"
         uuid household_id FK
         varchar season_id FK
-        text work_type "enum"
+        varchar work_type "enum"
         bigint entry_date "epoch ms"
+        int entry_day_local "cột sinh"
         text title
         text note
-        text weather
+        varchar weather
         numeric labor_hours
         bigint created_at
         bigint updated_at
@@ -214,15 +218,16 @@ erDiagram
     }
 
     EXPENSES {
-        varchar id PK "client UUID"
+        varchar id PK "UUID client"
         uuid household_id FK
         varchar season_id FK
-        varchar stock_transaction_id FK "nullable, UK"
-        text category "enum"
+        varchar stock_transaction_id FK "null được, UK"
+        varchar category "enum"
         numeric amount "VND"
         bigint expense_date "epoch ms"
+        int expense_day_local "cột sinh"
         text description
-        text source "enum manual|diary_auto"
+        varchar source "enum manual|diary_auto"
         bigint created_at
         bigint updated_at
         timestamptz server_updated_at
@@ -230,14 +235,15 @@ erDiagram
     }
 
     REVENUES {
-        varchar id PK "client UUID"
+        varchar id PK "UUID client"
         uuid household_id FK
         varchar season_id FK
-        numeric quantity "nullable"
-        text unit
-        numeric unit_price "nullable"
+        numeric quantity "null được"
+        varchar unit
+        numeric unit_price "null được"
         numeric amount "VND"
         bigint revenue_date "epoch ms"
+        int revenue_day_local "cột sinh"
         text buyer
         text description
         bigint created_at
@@ -250,34 +256,35 @@ erDiagram
         uuid id PK
         uuid household_id FK
         text device_id
+        varchar direction "pull|push"
         timestamptz started_at
         timestamptz finished_at
         bigint last_pulled_at
         int records_pulled
         int records_pushed
         int records_rejected
-        text status
+        varchar status
         text error_detail
     }
 ```
 
-### Reading the two most important relationships
+### Đọc hai quan hệ quan trọng nhất
 
-**`DIARY_ENTRIES → STOCK_TRANSACTIONS` (1:N, nullable FK).**
-A single diary entry ("phun thuốc 12/09") may consume several supplies. Each consumption is one `stock_transactions` row with `txn_type = 'out'` and `diary_entry_id` set. A stock-out recorded straight from the inventory screen simply leaves `diary_entry_id` NULL. This means there is exactly **one inventory ledger** rather than a separate "usage" table that has to be kept consistent with it — which is what makes "hoàn kho" (Issues #25, #26) a bounded, testable operation: reconcile the set of child rows for one parent.
+**`DIARY_ENTRIES → STOCK_TRANSACTIONS` (1:N, khoá ngoại cho phép null).**
+Một nhật ký ("phun thuốc 12/09") có thể tiêu thụ nhiều loại vật tư. Mỗi lần tiêu thụ là một dòng `stock_transactions` với `txn_type = 'out'` và `diary_entry_id` được đặt. Một lần xuất kho ghi thẳng từ màn hình vật tư thì để `diary_entry_id` trống. Nghĩa là chỉ có **một sổ cái kho duy nhất** thay vì một bảng "sử dụng" riêng phải giữ đồng bộ với nó — và đó là điều làm cho "hoàn kho" (Issue #25, #26) trở thành một thao tác có biên giới rõ ràng, kiểm thử được: đối chiếu tập dòng con của một dòng cha.
 
-**`STOCK_TRANSACTIONS → EXPENSES` (1:0..1, unique FK).**
-Every supply consumption that came from a diary entry auto-generates exactly one expense row, carrying `source = 'diary_auto'` and `stock_transaction_id` pointing back. The uniqueness constraint on `stock_transaction_id` is what makes Issue #29 idempotent: the generator can only ever produce one expense per movement, so re-running it after a sync retry cannot double-count the farmer's costs.
+**`STOCK_TRANSACTIONS → EXPENSES` (1:0..1, khoá ngoại duy nhất).**
+Mỗi lần tiêu thụ vật tư xuất phát từ nhật ký sẽ tự sinh đúng một dòng chi phí, mang `source = 'diary_auto'` và `stock_transaction_id` trỏ ngược lại. Ràng buộc duy nhất trên `stock_transaction_id` là thứ khiến Issue #29 trở nên idempotent: bộ sinh chỉ có thể tạo ra một chi phí cho mỗi giao dịch kho, nên chạy lại sau một lần thử đồng bộ không thể nhân đôi chi phí của nông dân.
 
 ---
 
-## 4. Enumerations
+## 4. Các tập giá trị liệt kê
 
-Stored as `TEXT` with a `CHECK` constraint, **not** as a PostgreSQL `ENUM` type.
+Lưu dưới dạng `TEXT` kèm ràng buộc `CHECK`, **không** dùng kiểu `ENUM` của PostgreSQL.
 
-**Why TEXT + CHECK:** WatermelonDB has no enum type, so the value crosses the wire as a plain string regardless. Native PG enums also require an `ALTER TYPE` migration to extend, which is awkward to keep in lockstep with a mobile schema version. A `CHECK` constraint gives the same integrity with a one-line migration to widen.
+**Vì sao TEXT + CHECK:** WatermelonDB không có kiểu enum, nên giá trị đi qua đường truyền dưới dạng chuỗi thuần bất kể thế nào. Enum gốc của PG lại cần một migration `ALTER TYPE` để mở rộng, khá vụng khi phải giữ đồng nhịp với phiên bản schema mobile. Ràng buộc `CHECK` cho toàn vẹn tương đương với một migration một dòng để nới rộng.
 
-| Enum | Column(s) | Allowed values | Vietnamese label (UI) |
+| Tập | Cột | Giá trị | Nhãn hiển thị |
 |---|---|---|---|
 | `work_type` | `diary_entries.work_type` | `land_prep` | Làm đất |
 | | | `sowing` | Gieo/Trồng |
@@ -310,216 +317,219 @@ Stored as `TEXT` with a `CHECK` constraint, **not** as a PostgreSQL `ENUM` type.
 | | | `harvested` | Đã thu hoạch |
 | | | `closed` | Đã kết thúc |
 
-The canonical list lives in **one place per side** — `backend/app/models/enums.py` and `mobile/src/db/enums.ts` — and a backend test asserts that every `CHECK` constraint in the live database matches the Python tuple, so a value added on one side and forgotten on the other fails CI rather than production.
+Danh sách chuẩn nằm ở **đúng một chỗ mỗi phía** — `backend/app/models/enums.py` và `mobile/src/db/enums.ts` — và một test backend khẳng định mọi ràng buộc `CHECK` trong database thật khớp với tuple Python, nên một giá trị thêm ở phía này mà quên phía kia sẽ làm CI đỏ chứ không lọt ra sản phẩm.
 
 ---
 
-## 5. Table Specifications
+## 5. Đặc tả từng bảng
 
-Legend: **PK** primary key · **FK** foreign key · **UK** unique · **NN** not null · *(sync)* participates in sync payloads
+Chú thích: **PK** khoá chính · **FK** khoá ngoại · **UK** duy nhất · **NN** không null · *(sync)* tham gia payload đồng bộ
 
-### 5.1 `households` — server-only
+### 5.1 `households` — chỉ máy chủ
 
-The tenant. Created once at registration; a device never edits it.
+Đơn vị thuê bao. Tạo một lần lúc đăng ký; thiết bị không bao giờ sửa.
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
-| `id` | `UUID` | PK, default `gen_random_uuid()` | Server-generated — registration is inherently online |
-| `name` | `TEXT` | NN | e.g. "Hộ ông Lê Văn A" |
-| `phone` | `VARCHAR(20)` | NULL | Contact only, not a login identifier |
-| `province` | `TEXT` | NULL | e.g. "Lâm Đồng" |
+| `id` | `UUID` | PK, mặc định `gen_random_uuid()` | Máy chủ sinh — đăng ký vốn dĩ phải online |
+| `name` | `TEXT` | NN | ví dụ "Hộ ông Lê Văn A" |
+| `phone` | `VARCHAR(20)` | NULL | Chỉ để liên hệ, không phải định danh đăng nhập |
+| `province` | `TEXT` | NULL | ví dụ "Lâm Đồng" |
 | `commune` | `TEXT` | NULL | |
-| `created_at` | `TIMESTAMPTZ` | NN, default `now()` | Server clock — this table is not synced |
-| `updated_at` | `TIMESTAMPTZ` | NN, default `now()` | |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` | NN, mặc định `now()` | Giờ máy chủ — bảng này không đồng bộ |
 
-### 5.2 `users` — server-only
+### 5.2 `users` — chỉ máy chủ
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
-| `id` | `UUID` | PK, default `gen_random_uuid()` | |
+| `id` | `UUID` | PK, mặc định `gen_random_uuid()` | |
 | `household_id` | `UUID` | FK → `households.id`, NN, `ON DELETE CASCADE` | |
-| `email` | `CITEXT` | UK, NN | `citext` extension → case-insensitive login |
+| `email` | `VARCHAR(255)` | NN | Duy nhất qua index `uq_users_email_lower` trên `lower(email)`; tầng auth cũng chuẩn hoá về chữ thường trước khi ghi |
 | `full_name` | `TEXT` | NN | |
-| `password_hash` | `TEXT` | NN | bcrypt, cost 12. **Never** leaves the server |
-| `is_active` | `BOOLEAN` | NN, default `TRUE` | |
-| `created_at` / `updated_at` | `TIMESTAMPTZ` | NN, default `now()` | |
+| `password_hash` | `TEXT` | NN | bcrypt, cost 12. **Không bao giờ** rời khỏi máy chủ |
+| `is_active` | `BOOLEAN` | NN, mặc định `TRUE` | |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` | NN, mặc định `now()` | |
 
-**Requirement:** more than one user may belong to a household (a farmer and an adult child both logging work from separate phones). This is precisely the scenario Issue #40's two-device conflict test exercises, so the schema must permit it from day one.
+**Yêu cầu:** một nông hộ có thể có nhiều hơn một người dùng (người nông dân và người con đã trưởng thành cùng ghi nhật ký từ hai điện thoại). Đây chính là kịch bản mà bài kiểm thử xung đột hai thiết bị ở Issue #40 khai thác, nên schema phải cho phép từ ngày đầu.
 
-### 5.3 `refresh_tokens` — server-only
+### 5.3 `refresh_tokens` — chỉ máy chủ
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `UUID` | PK | |
 | `user_id` | `UUID` | FK → `users.id`, NN, `ON DELETE CASCADE` | |
-| `token_hash` | `TEXT` | UK, NN | SHA-256 of the token; the raw token is never stored |
-| `device_id` | `TEXT` | NULL | Client-generated stable device identifier |
-| `expires_at` | `TIMESTAMPTZ` | NN | 90 days |
-| `revoked_at` | `TIMESTAMPTZ` | NULL | Set on logout |
-| `created_at` | `TIMESTAMPTZ` | NN, default `now()` | |
+| `token_hash` | `VARCHAR(64)` | UK, NN | SHA-256 của token; token thô không bao giờ được lưu |
+| `device_id` | `TEXT` | NULL | Định danh thiết bị ổn định do client sinh |
+| `expires_at` | `TIMESTAMPTZ` | NN | 90 ngày |
+| `revoked_at` | `TIMESTAMPTZ` | NULL | Đặt khi đăng xuất |
+| `created_at` | `TIMESTAMPTZ` | NN, mặc định `now()` | |
 
-**Requirement driven by offline use:** the access token lives 7 days and the refresh token 90 days. A device that has been in a field with no signal for three weeks must still be able to sync when it reconnects, without the farmer being bounced to a login screen holding three weeks of unsynced work.
+**Yêu cầu xuất phát từ việc dùng ngoại tuyến:** access token sống 7 ngày, refresh token sống 90 ngày. Một thiết bị đã ở ngoài đồng không sóng ba tuần vẫn phải đồng bộ được khi kết nối lại, chứ không bị đá về màn hình đăng nhập trong khi đang giữ ba tuần công việc chưa đồng bộ.
 
 ### 5.4 `seasons` *(sync)*
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
-| `id` | `VARCHAR(36)` | PK | Client UUID (R1) |
+| `id` | `VARCHAR(36)` | PK | UUID do client sinh (R1) |
 | `household_id` | `UUID` | FK → `households.id`, NN | R4 |
-| `name` | `TEXT` | NN, length 1–120 | "Vụ Đông Xuân 2026" |
-| `crop_type` | `TEXT` | NN, length 1–80 | "Lúa", "Cà chua", "Bắp cải" |
+| `name` | `TEXT` | NN, độ dài 1–120 | "Vụ Đông Xuân 2026" |
+| `crop_type` | `TEXT` | NN, độ dài 1–80 | "Lúa", "Cà chua", "Bắp cải" |
 | `area_size` | `NUMERIC(10,3)` | NULL, `>= 0` | |
-| `area_unit` | `VARCHAR(16)` | NN, default `'sao'` | `sao` / `ha` / `m2` / `công` |
+| `area_unit` | `VARCHAR(16)` | NN, mặc định `'sao'` | `sao` / `ha` / `m2` / `công` / `mẫu` |
 | `start_date` | `BIGINT` | NN | Epoch ms |
-| `end_date` | `BIGINT` | NULL | Epoch ms. NULL = season still running |
-| `status` | `TEXT` | NN, default `'active'`, CHECK enum | |
+| `end_date` | `BIGINT` | NULL | Epoch ms. NULL = vụ còn đang diễn ra |
+| `status` | `VARCHAR(16)` | NN, mặc định `'active'`, CHECK enum | |
 | `note` | `TEXT` | NULL | |
-| *sync block* | | | See §6.1 |
+| *khối sync* | | | Xem §6.1 |
 
-**Validation:** `end_date IS NULL OR end_date >= start_date`, enforced as a table `CHECK` **and** in the Pydantic schema **and** in the mobile form. Three layers, because a bad range silently breaks every report query that filters by season window.
+**Kiểm tra hợp lệ:** `end_date IS NULL OR end_date >= start_date`, được ép ở cả `CHECK` của bảng, schema Pydantic **và** biểu mẫu mobile. Ba tầng, vì một khoảng ngày sai sẽ âm thầm làm hỏng mọi truy vấn báo cáo lọc theo cửa sổ mùa vụ — và một lỗi báo cáo âm thầm tốn kém hơn nhiều so với một lỗi kiểm tra ồn ào.
 
 ### 5.5 `supplies` *(sync)*
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `VARCHAR(36)` | PK | |
 | `household_id` | `UUID` | FK, NN | |
-| `name` | `TEXT` | NN, length 1–120 | "Đạm Urê Phú Mỹ" |
-| `category` | `TEXT` | NN, CHECK enum | |
+| `name` | `TEXT` | NN, độ dài 1–120 | "Đạm Urê Phú Mỹ" |
+| `name_key` | `VARCHAR(160)` | NN | `name` đã chuẩn hoá — xem bên dưới. **Chỉ máy chủ** |
+| `category` | `VARCHAR(24)` | NN, CHECK enum | |
 | `unit` | `VARCHAR(16)` | NN | `kg` / `L` / `bao` / `chai` / `gói` |
-| `unit_cost` | `NUMERIC(16,2)` | NN, default `0`, `>= 0` | Current reference price, VND per `unit` |
-| `low_stock_threshold` | `NUMERIC(14,3)` | NN, default `0`, `>= 0` | Drives the low-stock flag (Issue #24) |
+| `unit_cost` | `NUMERIC(16,2)` | NN, mặc định `0`, `>= 0` | Giá tham chiếu hiện tại, VND mỗi `unit` |
+| `low_stock_threshold` | `NUMERIC(14,3)` | NN, mặc định `0`, `>= 0` | Kích hoạt cờ sắp hết hàng (Issue #24) |
+| `is_archived` | `BOOLEAN` | NN, mặc định `false` | Ẩn khỏi danh sách chọn mà không xoá — xem §8.4 |
 | `note` | `TEXT` | NULL | |
-| *sync block* | | | |
+| *khối sync* | | | |
 
-**Deliberately absent: `current_stock`.** On-hand quantity is **never** a stored column. It is always `Σ(in) + Σ(adjust) − Σ(out)` over non-deleted `stock_transactions`.
+**Cố ý không có: `current_stock`.** Số lượng tồn **không bao giờ** là một cột được lưu. Nó luôn là `Σ(in) + Σ(adjust) − Σ(out)` trên các dòng `stock_transactions` chưa bị xoá.
 
-**Why:** a stored counter has to be mutated by both the server and every offline device, and two devices each decrementing a cached counter while offline produce a number that is simply wrong after sync — with no way to detect it. Deriving from an append-only ledger means the two devices contribute two independent transaction rows, both sync cleanly, and the total is correct by construction. This is the central data-modelling decision of the inventory module. The cost is a `SUM` per read, which §10 indexes for and §11 caches at the UI layer.
+**Vì sao:** một bộ đếm được lưu phải bị thay đổi bởi cả máy chủ lẫn mọi thiết bị offline, và hai thiết bị cùng trừ vào một bộ đếm đã cache khi đang offline sẽ tạo ra một con số đơn giản là sai sau khi đồng bộ — mà không có cách nào phát hiện. Suy ra từ một sổ cái chỉ-thêm nghĩa là hai thiết bị đóng góp hai dòng giao dịch độc lập, cả hai đồng bộ sạch sẽ, và tổng đúng theo cấu trúc. Đây là quyết định mô hình hoá dữ liệu trung tâm của module vật tư. Cái giá là một phép `SUM` mỗi lần đọc, được §10 đánh index và §11 cache ở tầng giao diện.
 
-**Unique constraint:** `(household_id, name_key, unit) WHERE deleted_at IS NULL` — prevents "Đạm Urê" being created twice on one device as two separate inventory lines. Note this is *not* bulletproof across a partition (both devices are offline, both create it, both push); §8.3 documents the merge procedure.
+**`name_key`** là `name` đã qua `app.core.text.normalise_key` — chuẩn hoá NFC, cắt khoảng trắng, `casefold()`. Nó tồn tại vì **`lower()` của PostgreSQL hạ chữ theo collation của database**: với `C`, `lower('Đạm Urê Phú Mỹ')` trả về `'Đạm urê phú mỹ'` với chữ `Đ` nguyên vẹn, nên một index trên `lower(name)` vui vẻ chấp nhận cùng một vật tư hai lần. Hạ chữ trong Python rồi so sánh byte cho cùng kết quả trên mọi cụm bất kể nó được `initdb` thế nào. `name_key` là giá trị dẫn xuất, chỉ tồn tại phía máy chủ — không bao giờ đi trong payload đồng bộ. Phân tích đầy đủ: [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md).
 
-**`name_key`** (`VARCHAR(160) NOT NULL`) is `name` folded by `app.core.text.normalise_key` — NFC normalise, strip, `casefold()`. It exists because **PostgreSQL's `lower()` folds case per the database collation**: under `C`, `lower('Đạm Urê Phú Mỹ')` returns `'Đạm urê phú mỹ'` with the `Đ` untouched, so an index on `lower(name)` cheerfully accepts the same supply twice. Folding in Python and comparing bytes gives the same answer on every cluster regardless of how it was `initdb`'d. `name_key` is derived and server-side only — it never travels in a sync payload. Full analysis: [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md).
-
-**`is_archived`** (`BOOLEAN NOT NULL DEFAULT false`) hides a supply from the picker without tombstoning it — see §8.4 for why deletion is refused once a supply has movement history.
+**Ràng buộc duy nhất:** `(household_id, name_key, unit) WHERE deleted_at IS NULL` — ngăn "Đạm Urê" bị tạo hai lần trên một thiết bị thành hai dòng tồn kho. Lưu ý nó *không* chống được phân vùng mạng (hai thiết bị cùng offline, cùng tạo, cùng push); §8.3 mô tả cách xử lý.
 
 ### 5.6 `stock_transactions` *(sync)*
 
-The append-only inventory ledger.
+Sổ cái kho chỉ-thêm.
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `VARCHAR(36)` | PK | |
 | `household_id` | `UUID` | FK, NN | |
 | `supply_id` | `VARCHAR(36)` | FK → `supplies.id`, NN, DEFERRABLE | |
-| `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NULL, DEFERRABLE | Cost allocation; NULL for general stock-in |
-| `diary_entry_id` | `VARCHAR(36)` | FK → `diary_entries.id`, NULL, DEFERRABLE | Set ⟺ movement originated from a diary entry |
-| `txn_type` | `TEXT` | NN, CHECK `in`/`out`/`adjust` | |
-| `quantity` | `NUMERIC(14,3)` | NN, `> 0` for in/out | Always positive; direction comes from `txn_type` |
-| `unit_cost` | `NUMERIC(16,2)` | NN, default `0`, `>= 0` | **Snapshot** of `supplies.unit_cost` at the moment of the transaction |
-| `total_cost` | `NUMERIC(16,2)` | NN, default `0`, `>= 0` | `quantity × unit_cost`, computed and stored |
+| `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NULL, DEFERRABLE | Phân bổ chi phí; NULL khi nhập kho chung |
+| `diary_entry_id` | `VARCHAR(36)` | FK → `diary_entries.id`, NULL, DEFERRABLE | Có giá trị ⟺ giao dịch xuất phát từ nhật ký |
+| `txn_type` | `VARCHAR(8)` | NN, CHECK `in`/`out`/`adjust` | |
+| `quantity` | `NUMERIC(14,3)` | NN, `> 0` với in/out | Luôn dương; chiều lấy từ `txn_type` |
+| `unit_cost` | `NUMERIC(16,2)` | NN, mặc định `0`, `>= 0` | **Chụp ảnh** giá `supplies.unit_cost` tại thời điểm giao dịch |
+| `total_cost` | `NUMERIC(16,2)` | NN, mặc định `0`, `>= 0` | `quantity × unit_cost`, tính rồi lưu |
 | `txn_date` | `BIGINT` | NN | Epoch ms |
+| `txn_day_local` | `INTEGER` | Cột sinh, STORED | Ngày lịch địa phương — xem §7.2 |
 | `note` | `TEXT` | NULL | |
-| *sync block* | | | |
+| *khối sync* | | | |
 
-**Why `unit_cost` is snapshotted rather than joined:** fertiliser bought in March at 12,000 ₫/kg and used in September must be costed at what it actually cost, not at today's catalogue price. Joining live to `supplies.unit_cost` would silently rewrite the financial history of every past season every time the farmer updates a price. `total_cost` is likewise stored, not computed on read, so that a report is reproducible.
+**Vì sao `unit_cost` được chụp ảnh chứ không join:** phân bón mua tháng 3 giá 12.000 ₫/kg và dùng vào tháng 9 phải được tính đúng bằng giá đã thực trả, không phải giá catalogue hôm nay. Join trực tiếp tới `supplies.unit_cost` sẽ âm thầm viết lại lịch sử tài chính của mọi mùa vụ đã qua mỗi lần nông dân cập nhật giá. `total_cost` cũng được lưu chứ không tính khi đọc, để một báo cáo có thể tái lập lại được.
 
-**`quantity > 0` for `in` and `out`; `adjust` permits any non-zero value** (a stock-take can correct in either direction). Encoded as:
+**`quantity > 0` với `in` và `out`; `adjust` cho phép mọi giá trị khác 0** (một lần kiểm kê có thể điều chỉnh theo cả hai chiều). Diễn đạt thành:
 `CHECK ((txn_type IN ('in','out') AND quantity > 0) OR (txn_type = 'adjust' AND quantity <> 0))`
 
 ### 5.7 `diary_entries` *(sync)*
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `VARCHAR(36)` | PK | |
 | `household_id` | `UUID` | FK, NN | |
-| `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NN, DEFERRABLE | Every log belongs to a season |
-| `work_type` | `TEXT` | NN, CHECK enum | |
+| `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NN, DEFERRABLE | Mọi nhật ký thuộc về một mùa vụ |
+| `work_type` | `VARCHAR(24)` | NN, CHECK enum | |
 | `entry_date` | `BIGINT` | NN | Epoch ms |
-| `title` | `TEXT` | NULL, length ≤ 160 | Optional short label |
-| `note` | `TEXT` | NULL | Free text |
-| `weather` | `VARCHAR(32)` | NULL | `sunny` / `cloudy` / `rain` / `storm` |
-| `labor_hours` | `NUMERIC(6,2)` | NULL, `>= 0` | Informational |
-| *sync block* | | | |
+| `entry_day_local` | `INTEGER` | Cột sinh, STORED | |
+| `title` | `TEXT` | NULL, độ dài ≤ 160 | Nhãn ngắn tuỳ chọn |
+| `note` | `TEXT` | NULL | Ghi chú tự do |
+| `weather` | `VARCHAR(32)` | NULL | `sunny` / `cloudy` / `rain` / `storm` / `windy` |
+| `labor_hours` | `NUMERIC(6,2)` | NULL, `>= 0` | Thông tin tham khảo |
+| *khối sync* | | | |
 
-Supply consumption is **not** stored on this table — it lives in `stock_transactions` rows pointing back via `diary_entry_id` (§3). The mobile form presents them as one screen; the data model keeps them as parent + ledger children.
+Việc tiêu thụ vật tư **không** lưu trên bảng này — nó nằm ở các dòng `stock_transactions` trỏ ngược qua `diary_entry_id` (§3). Biểu mẫu mobile trình bày chúng như một màn hình; mô hình dữ liệu giữ chúng là dòng cha cộng các dòng sổ cái con.
 
 ### 5.8 `expenses` *(sync)*
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `VARCHAR(36)` | PK | |
 | `household_id` | `UUID` | FK, NN | |
-| `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NN, DEFERRABLE | Cost must be attributable to a season |
-| `stock_transaction_id` | `VARCHAR(36)` | FK → `stock_transactions.id`, NULL, **UK**, DEFERRABLE | Set ⟺ `source = 'diary_auto'` |
-| `category` | `TEXT` | NN, CHECK enum | |
+| `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NN, DEFERRABLE | Chi phí phải quy được về một mùa vụ |
+| `stock_transaction_id` | `VARCHAR(36)` | FK → `stock_transactions.id`, NULL, **UK**, DEFERRABLE | Có giá trị ⟺ `source = 'diary_auto'` |
+| `category` | `VARCHAR(24)` | NN, CHECK enum | |
 | `amount` | `NUMERIC(16,2)` | NN, `>= 0` | VND |
 | `expense_date` | `BIGINT` | NN | Epoch ms |
+| `expense_day_local` | `INTEGER` | Cột sinh, STORED | |
 | `description` | `TEXT` | NULL | |
-| `source` | `TEXT` | NN, default `'manual'`, CHECK `manual`/`diary_auto` | |
-| *sync block* | | | |
+| `source` | `VARCHAR(16)` | NN, mặc định `'manual'`, CHECK `manual`/`diary_auto` | |
+| *khối sync* | | | |
 
-**Paired constraint:** `CHECK ((source = 'diary_auto') = (stock_transaction_id IS NOT NULL))` — the two fields cannot disagree.
+**Ràng buộc ghép:** `CHECK ((source = 'diary_auto') = (stock_transaction_id IS NOT NULL))` — hai trường không thể mâu thuẫn nhau.
 
-**Unique index:** `UNIQUE (stock_transaction_id) WHERE stock_transaction_id IS NOT NULL` — the idempotency guarantee for Issue #29.
+**Index duy nhất:** `UNIQUE (stock_transaction_id) WHERE stock_transaction_id IS NOT NULL` — đây là bảo đảm idempotent cho Issue #29.
 
-Auto-generated rows are **read-only in the UI**. Editing the underlying diary entry's supply usage is the only way to change them; the mobile form disables the amount field and shows "Tự động từ nhật ký". Allowing a farmer to hand-edit a derived number would make the auto-generator and the stored value diverge with no way to reconcile them at sync time.
+Các dòng tự sinh là **chỉ đọc trên giao diện**. Cách duy nhất để thay đổi chúng là sửa lượng vật tư trong nhật ký; biểu mẫu mobile khoá ô số tiền và hiển thị "Tự động từ nhật ký". Cho phép nông dân sửa tay một con số dẫn xuất sẽ khiến bộ sinh và giá trị đã lưu tách rời nhau mà không có cách hoà giải nào tại thời điểm đồng bộ.
 
 ### 5.9 `revenues` *(sync)*
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `VARCHAR(36)` | PK | |
 | `household_id` | `UUID` | FK, NN | |
 | `season_id` | `VARCHAR(36)` | FK → `seasons.id`, NN, DEFERRABLE | |
-| `quantity` | `NUMERIC(14,3)` | NULL, `>= 0` | Harvest sold, e.g. `1250.000` |
-| `unit` | `VARCHAR(16)` | NULL | `kg` / `tấn` / `bao` |
-| `unit_price` | `NUMERIC(16,2)` | NULL, `>= 0` | VND per unit |
-| `amount` | `NUMERIC(16,2)` | NN, `>= 0` | VND. Authoritative total |
+| `quantity` | `NUMERIC(14,3)` | NULL, `>= 0` | Sản lượng bán, ví dụ `1250.000` |
+| `unit` | `VARCHAR(16)` | NULL | `kg` / `tạ` / `tấn` / `bao` |
+| `unit_price` | `NUMERIC(16,2)` | NULL, `>= 0` | VND mỗi đơn vị |
+| `amount` | `NUMERIC(16,2)` | NN, `>= 0` | VND. Tổng có thẩm quyền |
 | `revenue_date` | `BIGINT` | NN | Epoch ms |
+| `revenue_day_local` | `INTEGER` | Cột sinh, STORED | |
 | `buyer` | `TEXT` | NULL | "Thương lái Sáu Tâm" |
 | `description` | `TEXT` | NULL | |
-| *sync block* | | | |
+| *khối sync* | | | |
 
-`amount` is authoritative and always stored, even when `quantity × unit_price` is also present. The UI pre-fills `amount` from the product but lets the farmer override it (real sales get rounded, discounted, or partially paid). Deriving `amount` on read would silently discard that override.
+`amount` có thẩm quyền và luôn được lưu, kể cả khi đã có `quantity × unit_price`. Giao diện điền sẵn `amount` từ phép nhân nhưng cho phép nông dân ghi đè (giao dịch thật hay bị làm tròn xuống, trừ hao độ ẩm, hoặc trả một phần). Tính `amount` khi đọc sẽ âm thầm vứt bỏ con số họ thực sự nhận được.
 
-### 5.10 `sync_sessions` — server-only, audit
+### 5.10 `sync_sessions` — chỉ máy chủ, kiểm toán
 
-Not synced. Written by the sync endpoints; read by the load tests (Issue #39) and the operational dashboard.
+Không đồng bộ. Được các endpoint sync ghi; được bài kiểm thử tải (Issue #39) và màn hình trạng thái đọc.
 
-| Column | Type | Constraints | Notes |
+| Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | `UUID` | PK | |
 | `household_id` | `UUID` | FK, NN | |
-| `device_id` | `TEXT` | NULL | From the `X-Device-Id` header |
-| `direction` | `TEXT` | NN, CHECK `pull`/`push` | |
-| `started_at` | `TIMESTAMPTZ` | NN, default `now()` | |
+| `device_id` | `TEXT` | NULL | Từ header `X-Device-Id` |
+| `direction` | `VARCHAR(8)` | NN, CHECK `pull`/`push` | |
+| `started_at` | `TIMESTAMPTZ` | NN, mặc định `now()` | |
 | `finished_at` | `TIMESTAMPTZ` | NULL | |
-| `last_pulled_at` | `BIGINT` | NULL | Cursor the client presented |
-| `records_pulled` | `INTEGER` | NN, default `0` | |
-| `records_pushed` | `INTEGER` | NN, default `0` | |
-| `records_rejected` | `INTEGER` | NN, default `0` | Losers of a last-write-wins comparison |
-| `status` | `TEXT` | NN, CHECK `ok`/`partial`/`error` | |
+| `last_pulled_at` | `BIGINT` | NULL | Con trỏ client gửi lên |
+| `records_pulled` | `INTEGER` | NN, mặc định `0` | |
+| `records_pushed` | `INTEGER` | NN, mặc định `0` | |
+| `records_rejected` | `INTEGER` | NN, mặc định `0` | Bên thua trong so sánh ghi-sau-thắng |
+| `status` | `VARCHAR(8)` | NN, CHECK `ok`/`partial`/`error` | |
 | `error_detail` | `TEXT` | NULL | |
 
-This table is how "sync latency" and "conflict rate" stop being adjectives in the thesis report and become measured numbers.
+Bảng này là cách để "độ trễ đồng bộ" và "tỷ lệ xung đột" thôi là tính từ trong báo cáo đồ án và trở thành những con số đo được.
 
 ---
 
-## 6. Offline-Sync Metadata Requirements
+## 6. Yêu cầu metadata đồng bộ
 
-### 6.1 The server-side sync block
+### 6.1 Khối cột đồng bộ phía máy chủ
 
-Every synced table appends these five columns. In SQLAlchemy they come from a single `SyncMixin` so they cannot drift:
+Mọi bảng được đồng bộ đều có thêm năm cột này. Trong SQLAlchemy chúng đến từ một `SyncMixin` duy nhất nên không thể lệch nhau:
 
 ```
-created_at         BIGINT       NOT NULL          -- epoch ms, DEVICE clock
-updated_at         BIGINT       NOT NULL          -- epoch ms, DEVICE clock  → LWW comparison
-server_updated_at  TIMESTAMPTZ  NOT NULL now()    -- SERVER clock            → pull cursor
-deleted_at         TIMESTAMPTZ  NULL              -- tombstone (server clock)
-last_device_id     TEXT         NULL              -- who wrote this version (audit)
+created_at         BIGINT       NOT NULL          -- epoch ms, đồng hồ THIẾT BỊ
+updated_at         BIGINT       NOT NULL          -- epoch ms, đồng hồ THIẾT BỊ → so sánh LWW
+server_updated_at  TIMESTAMPTZ  NOT NULL          -- đồng hồ MÁY CHỦ         → con trỏ pull
+deleted_at         TIMESTAMPTZ  NULL              -- bia mộ (giờ máy chủ)
+last_device_id     TEXT         NULL              -- thiết bị nào ghi bản này (kiểm toán)
 ```
 
-`server_updated_at` is maintained by a **database trigger**, not by application code:
+`server_updated_at` do một **trigger database** duy trì, không phải mã ứng dụng:
 
 ```sql
 CREATE OR REPLACE FUNCTION touch_server_updated_at() RETURNS trigger AS $$
@@ -530,86 +540,87 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
-**Why a trigger and not `onupdate=` in SQLAlchemy:** the seed script, a manual `UPDATE` in pgAdmin, and a future admin tool all bypass the ORM. Any write that escapes the ORM without bumping the cursor becomes a row that is permanently invisible to every device — the worst class of sync bug, because the data is present on the server and simply never arrives. Enforcing it in the database makes that unrepresentable.
+**Vì sao dùng trigger chứ không dùng `onupdate=` của SQLAlchemy:** script seed, một câu `UPDATE` gõ tay trong pgAdmin, và mọi công cụ quản trị tương lai đều đi vòng qua ORM. Bất kỳ lần ghi nào lọt khỏi ORM mà không đẩy con trỏ lên sẽ tạo ra một dòng dữ liệu vĩnh viễn vô hình với mọi thiết bị — loại lỗi đồng bộ tệ nhất, vì dữ liệu vẫn nằm trên máy chủ mà đơn giản là không bao giờ tới nơi. Ép trong database làm điều đó trở thành không thể biểu diễn được.
 
-**Why `clock_timestamp()` and emphatically not `now()`:** `now()` is `transaction_timestamp()` — every statement in a transaction receives the time the *transaction began*. A sync push applies its whole batch in one transaction by design (§6.6), so with `now()` every row in a long push is stamped with a time that may already be behind a cursor another pull has stored — and those rows are then never delivered again. `clock_timestamp()` stamps each row when it is actually written. This was a real defect, caught by a regression test before any client existed; the full analysis is in [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md).
+**Vì sao `clock_timestamp()` chứ tuyệt đối không phải `now()`:** `now()` chính là `transaction_timestamp()` — mọi câu lệnh trong một transaction nhận thời điểm *transaction bắt đầu*. Sync push cố ý áp cả lô trong một transaction (§6.6), nên với `now()` mọi dòng trong một lô push dài sẽ bị đóng dấu một thời điểm có thể đã nằm sau con trỏ mà một lần pull khác đã lưu — và những dòng đó sẽ không bao giờ được gửi đi nữa. `clock_timestamp()` đóng dấu từng dòng đúng lúc nó được ghi. Đây là một lỗi thật, bắt được bằng test hồi quy trước khi có bất kỳ client nào; phân tích đầy đủ ở [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md).
 
-### 6.2 The client-side sync block
+### 6.2 Khối cột đồng bộ phía client
 
-WatermelonDB maintains its own bookkeeping columns automatically. They are **local only** and never appear in a payload:
+WatermelonDB tự duy trì các cột nội bộ của nó. Chúng **chỉ tồn tại cục bộ** và không bao giờ xuất hiện trong payload:
 
-| Column | Maintained by | Meaning |
+| Cột | Do ai duy trì | Ý nghĩa |
 |---|---|---|
-| `id` | Our UUID generator | Primary key (R1) |
-| `_status` | WatermelonDB | `created` \| `updated` \| `synced` \| `deleted` — the pending-change queue |
-| `_changed` | WatermelonDB | Comma-separated list of locally-modified fields — drives per-field merge on pull |
-| `created_at` | Our model (`@readonly @date`) | Mirrors the server column |
-| `updated_at` | Our model (`@date`) | Mirrors the server column |
+| `id` | Bộ sinh UUID của ta | Khoá chính (R1) |
+| `_status` | WatermelonDB | `created` \| `updated` \| `synced` \| `deleted` — hàng đợi thay đổi chờ gửi |
+| `_changed` | WatermelonDB | Danh sách trường đã sửa cục bộ, phân cách bằng dấu phẩy — dẫn dắt việc hợp nhất theo trường khi pull |
+| `created_at` | Model của ta (`@readonly @date`) | Phản chiếu cột phía máy chủ |
+| `updated_at` | Model của ta (`@date`) | Phản chiếu cột phía máy chủ |
 
-`_status` is why AgriLog needs no outbox table: the local database *is* the queue. The pending-change badge in the sync status bar (Issue #35) is literally `Q.where('_status', Q.notEq('synced'))` counted across the seven synced tables.
+`_status` là lý do AgriLog không cần bảng outbox: cơ sở dữ liệu cục bộ *chính là* hàng đợi. Huy hiệu đếm thay đổi chờ gửi trên thanh trạng thái (Issue #35) đúng nghĩa đen là `Q.where('_status', Q.notEq('synced'))` đếm trên sáu bảng được đồng bộ.
 
-**Requirement:** the mobile schema must **not** declare `_status`, `_changed`, `server_updated_at`, `deleted_at`, or `last_device_id` as columns in `schema.ts`. The first two are added by WatermelonDB itself (declaring them causes a schema conflict), and the last three are server concerns that must never round-trip.
+**Yêu cầu:** schema mobile **không được** khai báo `_status`, `_changed`, `server_updated_at`, `deleted_at`, `last_device_id` hay `name_key` như các cột trong `schema.ts`. Hai cái đầu do chính WatermelonDB thêm vào (khai báo lại sẽ gây xung đột schema), và những cái còn lại là mối quan tâm của máy chủ, không được phép đi vòng.
 
-### 6.3 Payload column whitelist
+### 6.3 Danh sách cột được phép trong payload
 
-The pull serialiser emits, for each record: every business column from §5, plus `id`, `created_at`, `updated_at`. It emits **nothing else**. Specifically excluded: `server_updated_at`, `deleted_at`, `last_device_id`, and `household_id`.
+Bộ tuần tự hoá pull phát ra, cho mỗi bản ghi: mọi cột nghiệp vụ ở §5, cộng `id`, `created_at`, `updated_at`. Nó **không phát ra gì khác**. Loại trừ cụ thể: `server_updated_at`, `deleted_at`, `last_device_id`, `household_id`, `name_key`, và các cột sinh `*_day_local` (tự động loại nhờ kiểm tra `column.computed`).
 
-**Why exclude `household_id`:** the client already knows its household from the JWT, and every row it can ever see belongs to it. Sending it would add a column to seven WatermelonDB tables that carries zero information and creates a seventh chance for a schema mismatch. The server re-attaches it on push from the authenticated token — which also means a malicious client cannot write into another household by forging the field, because the field is not read from the payload at all.
+**Vì sao loại `household_id`:** client đã biết nông hộ của mình từ JWT, và mọi dòng nó có thể thấy đều thuộc về hộ đó. Gửi thêm sẽ thêm một cột vào sáu bảng WatermelonDB mà không mang thông tin gì, đồng thời tạo ra cơ hội thứ sáu để lệch schema. Máy chủ tự gắn lại khi push từ token đã xác thực — điều này cũng có nghĩa một client độc hại không thể ghi vào hộ khác bằng cách giả mạo trường đó, vì trường đó hoàn toàn không được đọc từ payload.
 
-### 6.4 Clock-skew guard
+### 6.4 Kẹp sai lệch đồng hồ
 
-On push, before the last-write-wins comparison:
-
-```
-if incoming.updated_at > server_now_ms + 300_000:      # more than 5 minutes ahead
-    incoming.updated_at = server_now_ms                 # clamp
-    log to sync_sessions.error_detail
-```
-
-Without this, one phone with a misconfigured date can set `updated_at` to a far-future value and permanently win every subsequent conflict on that record — every other device's edits vanish silently, forever. Five minutes is generous enough to absorb ordinary NTP drift and short enough that a wrong-year clock is caught.
-
-### 6.5 The pull cursor contract
+Khi push, trước khi so sánh ghi-sau-thắng:
 
 ```
-GET /sync/pull?last_pulled_at=<epoch_ms>&schema_version=<int>&migration=<json|null>
+if incoming.updated_at > server_now_ms + 300_000:      # sớm hơn 5 phút
+    incoming.updated_at = server_now_ms                 # kẹp lại
+    ghi vào sync_sessions.error_detail
 ```
 
-Server behaviour:
+Không có bước này, một điện thoại cài sai ngày có thể đặt `updated_at` thành một giá trị xa trong tương lai và vĩnh viễn thắng mọi xung đột sau đó trên bản ghi ấy — chỉnh sửa của mọi thiết bị khác biến mất âm thầm, mãi mãi. Năm phút đủ rộng để hấp thụ sai lệch NTP thông thường và đủ hẹp để bắt được một chiếc đồng hồ sai năm.
 
-0. `cursor := last_pulled_at − SYNC_CURSOR_SAFETY_MARGIN_MS` (2 000 ms) — see below.
-1. `now_ts := SELECT clock_timestamp()` — captured **once**, at the very start of the request, before any table is read.
-2. For each of the seven synced tables:
-   - `created` ← rows where `server_updated_at > cursor AND deleted_at IS NULL AND created_at > cursor`
-   - `updated` ← rows where `server_updated_at > cursor AND deleted_at IS NULL AND created_at <= cursor`
-   - `deleted` ← **bare id strings** where `server_updated_at > cursor AND deleted_at IS NOT NULL`
-3. Return `{ "changes": {...}, "timestamp": <now_ts as epoch ms> }`.
-4. `last_pulled_at = 0` (or absent) means a full bootstrap: every live row, all in `created`.
-
-**Why the cursor is rewound by a safety margin (step 0):** a row is *stamped* when it is written but only becomes *visible* when its transaction commits. A transaction that writes at T5 and commits at T8 is invisible to a pull running at T6 — which would then store cursor T6 and skip that row forever. Rewinding by more than the longest write transaction closes the window. Re-delivering a row is harmless because the client upserts on a client-generated ID (R1), so a duplicate pull is a no-op. The margin must exceed the duration of the largest push batch; Issue #39's load test measures this and revisits the value.
-
-**Why `now_ts` is captured before reading, not after:** if it were taken at the end, a row committed by another device *during* the read would fall before the returned cursor and never be pulled again. Taking it first means such a row is at worst pulled twice — and since the client applies changes as an upsert, a duplicate pull is a no-op. The design trades a redundant row for the impossibility of a lost one.
-
-**Why the `created` / `updated` split uses `created_at`:** WatermelonDB will error on `created` containing a record it already has, and on `updated` containing one it does not. The split must therefore be relative to the *client's* cursor, not to any server-side notion of newness.
-
-### 6.6 The push contract
+### 6.5 Contract con trỏ pull
 
 ```
-POST /sync/push?last_pulled_at=<epoch_ms>
-Body: { "changes": { "<table>": { "created": [...], "updated": [...], "deleted": ["id", ...] } } }
+GET /sync/pull?lastPulledAt=<epoch_ms>&schemaVersion=<int>&migration=<json|null>
 ```
 
-Server behaviour:
+Hành vi máy chủ:
 
-1. Open **one** transaction for the entire batch.
-2. Apply tables in strict dependency order (§8.1).
-3. Treat `created` and `updated` identically — both are an **upsert on `id`** (R1). A device that created a row, synced, then had the response lost will resend it in `created`; treating that as an error would deadlock the device forever.
-4. Per row, compare `incoming.updated_at` against `stored.updated_at`:
-   - strictly greater → apply, set `last_device_id`, trigger bumps `server_updated_at`
-   - less or equal → **reject that row**, increment `records_rejected`, and report it in the response
-5. Deletes set `deleted_at = now()` and are idempotent (deleting an already-deleted row is success, not error).
-6. Commit. On any exception, roll back the whole batch and return 409/500 — the client keeps every record at `_status != 'synced'` and retries. There is no partial-apply state to reconcile.
+0. `detect_cursor := lastPulledAt − SYNC_CURSOR_SAFETY_MARGIN_MS` (2.000 ms) — xem bên dưới.
+1. `now_ts := SELECT clock_timestamp()` — lấy **một lần**, ngay đầu request, trước khi đọc bất kỳ bảng nào.
+2. Với mỗi bảng trong sáu bảng được đồng bộ:
+   - `created` ← các dòng có `server_updated_at > detect_cursor AND deleted_at IS NULL AND created_at > lastPulledAt`
+   - `updated` ← các dòng có `server_updated_at > detect_cursor AND deleted_at IS NULL AND created_at <= lastPulledAt`
+   - `deleted` ← **chỉ chuỗi id** với `server_updated_at > detect_cursor AND deleted_at IS NOT NULL`
+3. Trả về `{ "changes": {...}, "timestamp": <now_ts dạng epoch ms> }`.
+4. `lastPulledAt = 0` (hoặc không có) nghĩa là khởi tạo toàn bộ: mọi dòng còn sống, tất cả nằm trong `created`.
 
-Response:
+**Vì sao lùi con trỏ một biên an toàn (bước 0):** một dòng được *đóng dấu* khi ghi nhưng chỉ *thấy được* khi transaction của nó commit. Một transaction ghi lúc T5 và commit lúc T8 là vô hình với lần pull chạy lúc T6 — lần pull đó sẽ lưu con trỏ T6 rồi bỏ qua dòng ấy mãi mãi. Lùi lại nhiều hơn transaction ghi dài nhất sẽ đóng khe hở đó. Gửi lại một dòng là vô hại vì client upsert theo ID nó tự sinh (R1). Biên phải lớn hơn thời lượng của lô push lớn nhất; bài kiểm thử tải ở Issue #39 sẽ đo và xem lại con số này.
+
+**Vì sao phân loại `created`/`updated` dùng `lastPulledAt` gốc, không dùng con trỏ đã lùi:** biên an toàn chỉ mở rộng phạm vi *phát hiện*. Nếu phân loại cũng lùi theo thì mọi bản ghi được gửi lại vì an toàn sẽ đến dưới dạng `created` cho một bản ghi mà client **đã có** — WatermelonDB báo đó là lỗi. Dùng con trỏ gốc khiến các bản gửi lại rơi vào `updated`, đúng chỗ của chúng.
+
+**Vì sao lấy `now_ts` trước khi đọc chứ không phải sau:** nếu lấy ở cuối, một dòng được thiết bị khác commit *trong lúc* đang đọc sẽ rơi vào trước con trỏ trả về và không bao giờ được kéo lại. Lấy trước nghĩa là dòng đó tệ nhất chỉ bị kéo hai lần — mà vì client áp dụng thay đổi bằng upsert, một lần pull trùng là thao tác rỗng. Thiết kế đánh đổi một dòng dư lấy điều bất khả: một dòng bị mất.
+
+### 6.6 Contract push
+
+```
+POST /sync/push?lastPulledAt=<epoch_ms>
+Body: { "changes": { "<bảng>": { "created": [...], "updated": [...], "deleted": ["id", ...] } } }
+```
+
+Hành vi máy chủ:
+
+1. Mở **một** transaction cho toàn bộ lô.
+2. Áp dụng các bảng theo đúng thứ tự phụ thuộc (§8.1).
+3. Xử lý `created` và `updated` **giống hệt nhau** — cả hai là **upsert theo `id`** (R1). Một thiết bị đã tạo dòng, đã đồng bộ, rồi mất phản hồi sẽ gửi lại nó trong `created`; coi đó là lỗi sẽ khiến thiết bị đó kẹt vĩnh viễn.
+4. Với từng dòng, so `incoming.updated_at` với `stored.updated_at`:
+   - lớn hơn hẳn → áp dụng, đặt `last_device_id`, trigger đẩy `server_updated_at`
+   - nhỏ hơn hoặc bằng → **từ chối riêng dòng đó**, tăng `records_rejected`, và báo lại trong phản hồi
+5. Xoá đặt `deleted_at = clock_timestamp()` và idempotent (xoá một dòng đã xoá là thành công, không phải lỗi).
+6. Commit. Gặp ngoại lệ ở mức lô thì rollback toàn bộ — client vẫn giữ mọi bản ghi ở `_status != 'synced'` và gửi lại. Không có trạng thái áp-dụng-một-nửa nào phải hoà giải.
+7. Mỗi bản ghi có một **SAVEPOINT** riêng, để một vi phạm ràng buộc trên một dòng không làm hỏng phiên và kéo 499 dòng còn lại chết theo.
+
+Phản hồi:
 
 ```jsonc
 {
@@ -622,162 +633,171 @@ Response:
 }
 ```
 
-**Why report rejections rather than silently dropping them:** a farmer whose edit lost a last-write-wins race deserves to be told, not to discover three weeks later that the note never saved. The client surfaces this in the sync status UI (Issue #35).
+Các lý do từ chối: `stale_update` · `missing_parent` · `foreign_record` · `unknown_table` · `invalid_record`.
+
+**Vì sao báo cáo từ chối thay vì âm thầm bỏ qua:** một nông dân thua trong cuộc đua ghi-sau-thắng xứng đáng được thông báo, chứ không phải ba tuần sau mới phát hiện ghi chú chưa từng được lưu. Client hiển thị điều này trên giao diện trạng thái đồng bộ (Issue #35).
 
 ---
 
-## 7. PostgreSQL ↔ WatermelonDB Type Parity
+## 7. Song song kiểu dữ liệu PostgreSQL ↔ WatermelonDB
 
-WatermelonDB supports exactly three column types: `string`, `number`, `boolean`. Every PostgreSQL type must map into one of them without loss.
+WatermelonDB hỗ trợ đúng ba kiểu cột: `string`, `number`, `boolean`. Mọi kiểu PostgreSQL phải ánh xạ vào một trong ba mà không mất mát.
 
-| Concept | PostgreSQL | WatermelonDB | Decorator | Loss analysis |
+| Khái niệm | PostgreSQL | WatermelonDB | Decorator | Phân tích mất mát |
 |---|---|---|---|---|
-| Primary key | `VARCHAR(36)` | *(implicit `id`)* | — | None — UUID string both sides |
-| Foreign key | `VARCHAR(36)` | `string` | `@relation` / `@field` | None |
-| Short text | `TEXT` / `VARCHAR(n)` | `string` | `@text` | Length limits enforced client-side by the form, server-side by the column |
-| Free text | `TEXT` | `string` (`isOptional`) | `@text` | None |
-| Enum | `TEXT` + CHECK | `string` | `@field` | Constraint is server-only; client validates against `enums.ts` |
-| Money (VND) | `NUMERIC(16,2)` | `number` | `@field` | **See below** |
-| Quantity | `NUMERIC(14,3)` | `number` | `@field` | **See below** |
-| Business date | `BIGINT` (epoch ms) | `number` | `@date` | None — this is exactly WatermelonDB's own date representation |
-| Sync timestamp | `BIGINT` (epoch ms) | `number` | `@readonly @date` | None |
-| Server timestamp | `TIMESTAMPTZ` | *(not exposed)* | — | Never crosses the wire (§6.3) |
-| Boolean | `BOOLEAN` | `boolean` | `@field` | None |
+| Khoá chính | `VARCHAR(36)` | *(`id` ngầm định)* | — | Không — chuỗi UUID cả hai phía |
+| Khoá ngoại | `VARCHAR(36)` | `string` | `@relation` / `@field` | Không |
+| Văn bản ngắn | `TEXT` / `VARCHAR(n)` | `string` | `@text` | Giới hạn độ dài do biểu mẫu ép phía client, cột ép phía máy chủ |
+| Văn bản tự do | `TEXT` | `string` (`isOptional`) | `@text` | Không |
+| Enum | `TEXT` + CHECK | `string` | `@field` | Ràng buộc chỉ ở máy chủ; client kiểm tra theo `enums.ts` |
+| Tiền (VND) | `NUMERIC(16,2)` | `number` | `@field` | **Xem bên dưới** |
+| Số lượng | `NUMERIC(14,3)` | `number` | `@field` | **Xem bên dưới** |
+| Ngày nghiệp vụ | `BIGINT` (epoch ms) | `number` | `@date` | Không — đây đúng là cách WatermelonDB biểu diễn ngày |
+| Mốc đồng bộ | `BIGINT` (epoch ms) | `number` | `@readonly @date` | Không |
+| Mốc máy chủ | `TIMESTAMPTZ` | *(không lộ ra)* | — | Không bao giờ đi qua đường truyền (§6.3) |
+| Boolean | `BOOLEAN` | `boolean` | `@field` | Không |
 
-### 7.1 The `NUMERIC → number` precision contract
+### 7.1 Hợp đồng độ chính xác `NUMERIC → number`
 
-This is the only lossy mapping in the schema, so it is specified rather than assumed.
+Đây là ánh xạ có mất mát duy nhất trong schema, nên nó được đặc tả thay vì mặc định.
 
-JavaScript numbers are IEEE-754 float64: integers are exact up to 2⁵³ ≈ 9.007 × 10¹⁵, but decimal fractions such as `0.1` are not exactly representable.
+Số của JavaScript là IEEE-754 float64: số nguyên chính xác tới 2⁵³ ≈ 9,007 × 10¹⁵, nhưng phân số thập phân như `0.1` không biểu diễn được chính xác.
 
-**Money.** VND has no sub-unit in practice; every real amount is a whole number of đồng. The largest plausible value in this application — a season's gross revenue for a smallholder — is on the order of 10⁹ ₫, which is eleven orders of magnitude below the exact-integer ceiling. Money is therefore **exact** in float64 for every value this app will ever hold. The `NUMERIC(16,2)` scale exists to absorb the rare `.50` and to keep the column honest, not because fractions are expected.
+**Tiền.** VND thực tế không có đơn vị nhỏ hơn; mọi khoản thật đều là số nguyên đồng. Giá trị lớn nhất hợp lý trong ứng dụng này — tổng doanh thu một vụ của một nông hộ — vào cỡ 10⁹ ₫, tức là thấp hơn trần số nguyên chính xác mười một bậc độ lớn. Vậy tiền là **chính xác tuyệt đối** trong float64 với mọi giá trị ứng dụng này sẽ chứa. Thang `NUMERIC(16,2)` tồn tại để hấp thụ những trường hợp hiếm có `.50` và để cột trung thực, không phải vì mong đợi phân số.
 
-**Quantity.** `12.5 kg` is representable; `0.1 + 0.2 = 0.30000000000000004` is the classic hazard. The contract:
+**Số lượng.** `12.5 kg` biểu diễn được; `0.1 + 0.2 = 0.30000000000000004` là cái bẫy kinh điển. Hợp đồng:
 
-- The client rounds every quantity to 3 decimals before writing: `Math.round(q * 1000) / 1000`.
-- The server rounds every incoming quantity to 3 decimals before storing: `Decimal(str(q)).quantize(Decimal('0.001'), ROUND_HALF_UP)`.
-- All server-side arithmetic (stock levels, cost rollups) uses Python `Decimal`, never `float`.
-- A backend test asserts round-trip stability: write `0.1`, `0.2`, `0.3`, sum them, and assert exactly `0.600`.
+- Client làm tròn mọi số lượng về 3 chữ số thập phân trước khi ghi: `Math.round(q * 1000) / 1000`.
+- Máy chủ làm tròn mọi số lượng nhận vào về 3 chữ số trước khi lưu: `Decimal(str(q)).quantize(Decimal('0.001'), ROUND_HALF_UP)`.
+- Mọi phép tính phía máy chủ (mức tồn, tổng hợp chi phí) dùng `Decimal` của Python, không bao giờ dùng `float`.
+- Một test backend khẳng định vòng tròn ổn định: ghi `0.1`, `0.2`, `0.3`, cộng lại, và khẳng định đúng bằng `0.600`.
 
-Because both sides round identically at the boundary, the stored value on device and server is bit-identical, and last-write-wins never fires spuriously on a value that only *looks* different.
+Vì hai phía làm tròn giống hệt nhau tại ranh giới, giá trị lưu trên thiết bị và trên máy chủ giống nhau từng bit, và ghi-sau-thắng không bao giờ kích hoạt nhầm trên một giá trị chỉ *trông có vẻ* khác.
 
-### 7.2 Date handling
+Toàn bộ hợp đồng này nằm ở một chỗ: `backend/app/core/numeric.py`.
 
-Business dates (`start_date`, `entry_date`, `txn_date`, `expense_date`, `revenue_date`) are stored as `BIGINT` epoch milliseconds in PostgreSQL rather than as `DATE` or `TIMESTAMPTZ`.
+### 7.2 Xử lý ngày tháng
 
-**Why:** WatermelonDB's `@date` decorator stores epoch ms. Storing `DATE` server-side would require a conversion at both edges of every sync, and a conversion is a place where a timezone can be applied inconsistently — the classic symptom being an entry logged at 8 p.m. on the 12th appearing under the 13th after a sync. Epoch ms is the same integer everywhere and needs no interpretation to round-trip.
+Ngày nghiệp vụ (`start_date`, `entry_date`, `txn_date`, `expense_date`, `revenue_date`) được lưu dưới dạng `BIGINT` epoch mili-giây trong PostgreSQL thay vì `DATE` hay `TIMESTAMPTZ`.
 
-**The cost** is that SQL date grouping for reports is not free. Vietnam is UTC+7 year-round with no daylight saving, so the local calendar day is exact integer arithmetic:
+**Vì sao:** decorator `@date` của WatermelonDB lưu epoch ms. Lưu `DATE` phía máy chủ sẽ đòi hỏi một phép chuyển đổi ở cả hai đầu của mỗi lần đồng bộ, và mỗi phép chuyển đổi là một chỗ có thể áp múi giờ không nhất quán — triệu chứng kinh điển là một nhật ký ghi lúc 20 giờ ngày 12 lại hiện ra ở ngày 13 sau khi đồng bộ. Epoch ms là cùng một số nguyên ở mọi nơi và không cần diễn giải gì để đi vòng.
+
+**Cái giá** là việc gom nhóm theo ngày trong SQL không miễn phí. Việt Nam là UTC+7 quanh năm không có giờ tiết kiệm ánh sáng, nên ngày lịch địa phương là phép số học nguyên chính xác:
 
 ```sql
--- local day index, immutable → indexable, added in the reporting migration (Issue #42)
+-- chỉ số ngày địa phương, bất biến → đánh index được
 ALTER TABLE expenses ADD COLUMN expense_day_local INTEGER
   GENERATED ALWAYS AS (((expense_date + 25200000) / 86400000)::INTEGER) STORED;
 ```
 
-`25200000` is 7 hours in milliseconds. The same generated column is added to `revenues.revenue_date`, `diary_entries.entry_date`, and `stock_transactions.txn_date`. Grouping by month uses `to_char(to_timestamp((expense_date + 25200000) / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM')`.
+`25200000` là 7 giờ tính bằng mili-giây. Cột sinh tương tự được thêm cho `revenues.revenue_date`, `diary_entries.entry_date` và `stock_transactions.txn_date`.
 
-The offset constant lives in `backend/app/core/config.py` as `APP_TZ_OFFSET_MS` and in `mobile/src/utils/date.ts` as `TZ_OFFSET_MS`, so the client's local grouping and the server's produce identical buckets. If the app is ever deployed outside a fixed-offset timezone, this is the assumption that breaks — recorded in §13.
+Hằng số offset nằm ở `backend/app/core/config.py` dưới tên `APP_TZ_OFFSET_MS` và ở `mobile/src/utils/date.ts` dưới tên `TZ_OFFSET_MS`, để việc gom nhóm phía client và phía máy chủ cho ra cùng những nhóm giống nhau. Nếu ứng dụng được triển khai ngoài một múi giờ có offset cố định thì đây chính là giả định bị phá vỡ — ghi ở §13.
+
+Báo cáo gom theo tuần và tháng được thực hiện trong Python từ các cột `*_day_local` này, chứ không phải bằng SQL. Xem §11.
 
 ---
 
-## 8. Referential Integrity Under Sync
+## 8. Toàn vẹn tham chiếu khi đồng bộ
 
-### 8.1 Table apply order
+### 8.1 Thứ tự áp dụng các bảng
 
-A sync batch is a flat set of tables, but the rows have dependencies. Both push (server) and pull (client) apply in this order:
+Một lô đồng bộ là một tập bảng phẳng, nhưng các dòng có phụ thuộc. Cả push (máy chủ) và pull (client) đều áp dụng theo thứ tự:
 
 ```
-1. seasons              (depends on nothing but households)
-2. supplies             (depends on nothing but households)
+1. seasons              (chỉ phụ thuộc households)
+2. supplies             (chỉ phụ thuộc households)
 3. diary_entries        (→ seasons)
 4. stock_transactions   (→ supplies, seasons, diary_entries)
 5. expenses             (→ seasons, stock_transactions)
 6. revenues             (→ seasons)
 ```
 
-Deletes are applied in **reverse** order so a parent is never tombstoned while a live child still points at it.
+Xoá được áp dụng theo thứ tự **ngược lại**, để không bao giờ đặt bia mộ cho một dòng cha trong khi con của nó còn sống.
 
-### 8.2 Deferred constraints
+### 8.2 Ràng buộc trì hoãn
 
-All FKs between synced tables are declared `DEFERRABLE INITIALLY DEFERRED`.
+Mọi khoá ngoại giữa các bảng được đồng bộ đều khai báo `DEFERRABLE INITIALLY DEFERRED`.
 
-**Why:** even with the ordering in §8.1, a single batch can contain a `stock_transactions` row whose `diary_entry_id` refers to a diary entry in the *same* batch. Ordering handles that. What ordering does not handle is a `RESTRICT` violation raised mid-batch on a row that a later statement in the same transaction would have fixed. Deferring the check to `COMMIT` means the batch is validated as a whole — which is the correct semantics, since the batch *is* the unit of atomicity.
+**Vì sao:** ngay cả với thứ tự ở §8.1, một lô đơn lẻ vẫn có thể chứa một dòng `stock_transactions` mà `diary_entry_id` của nó trỏ tới một nhật ký nằm trong *cùng* lô đó. Thứ tự xử lý được trường hợp này. Cái mà thứ tự không xử lý được là một vi phạm `RESTRICT` phát sinh giữa lô trên một dòng mà một câu lệnh sau đó trong cùng transaction sẽ sửa. Trì hoãn kiểm tra tới lúc `COMMIT` nghĩa là lô được kiểm tra như một tổng thể — đó mới là ngữ nghĩa đúng, vì lô *chính là* đơn vị nguyên tử.
 
-### 8.3 Orphan and duplicate policy
+### 8.3 Chính sách với dòng mồ côi và dòng trùng
 
-| Situation | Policy |
+| Tình huống | Chính sách |
 |---|---|
-| Child arrives, parent missing entirely (parent still on another device) | Reject **the child row only**, report `reason: "missing_parent"`. The client retries next cycle, by which time the parent has usually arrived. The batch is not failed. |
-| Parent soft-deleted, child still live | Server cascades the soft delete to children in the same transaction (see §9.3) |
-| Same supply created independently on two offline devices | Both rows sync and coexist as two inventory lines. This is *correct* — silently merging two rows a human might have meant as distinct is worse than showing both. The UI surfaces a "possible duplicate" hint on the inventory screen; merging is a manual, explicit action. Documented as a known limitation for the thesis. |
-| Row pushed for a household the JWT does not own | Reject the whole request with 403. This is not a sync error, it is an authorisation failure. |
+| Dòng con tới nhưng dòng cha chưa có (cha còn nằm ở thiết bị khác) | Từ chối **chỉ dòng con**, báo `reason: "missing_parent"`. Client sẽ gửi lại ở chu kỳ sau, lúc đó dòng cha thường đã tới. Lô không bị đánh trượt. |
+| Dòng cha bị xoá mềm, dòng con còn sống | Máy chủ lan xoá mềm xuống các dòng con trong cùng transaction (xem §8.4) |
+| Cùng một vật tư được tạo độc lập trên hai thiết bị offline | Cả hai dòng đồng bộ lên và cùng tồn tại thành hai mục tồn kho. Điều này *đúng* — âm thầm gộp hai dòng mà con người có thể chủ ý tạo riêng còn tệ hơn là hiển thị cả hai. Giao diện đưa ra gợi ý "có thể trùng" ở màn hình tồn kho; việc gộp là hành động thủ công, tường minh. Ghi nhận như một hạn chế đã biết trong báo cáo. |
+| Dòng được push cho một nông hộ mà JWT không sở hữu | Từ chối riêng dòng đó với `reason: "foreign_record"`. Trùng UUID do client sinh là cực kỳ khó xảy ra, nên trường hợp này gần như luôn có nghĩa một thiết bị đã được đăng ký lại sang hộ khác. |
 
-### 8.4 Cascade rules
+### 8.4 Quy tắc lan truyền khi xoá
 
-| Parent | Child | On soft delete |
+| Cha | Con | Khi xoá mềm |
 |---|---|---|
-| `seasons` | `diary_entries`, `expenses`, `revenues`, `stock_transactions` | Cascade soft delete |
-| `diary_entries` | `stock_transactions` (where `diary_entry_id` set) | Cascade soft delete **+ stock restore** (§9.2) |
-| `stock_transactions` | `expenses` (via `stock_transaction_id`) | Cascade soft delete |
-| `supplies` | `stock_transactions` | **Block.** A supply with movement history cannot be deleted — the API returns 409 and directs the user to `is_archived` instead. Two reasons, both about *other* devices: a tombstone makes WatermelonDB drop the row locally, so last season's diary entries would render a blank supply name on every device; and the ledger rows carry the prices past seasons were costed at, so removing the catalogue entry they point at rewrites that history. An archived supply keeps syncing normally and keeps its ledger. |
-| `seasons` | `stock_transactions` **without** a `diary_entry_id` | **De-allocate, do not delete.** `season_id` is set to NULL and the row survives. These are real purchases booked against the season; deleting them would erase a transaction that actually happened and silently change the on-hand quantity of a supply the farmer still physically has. The ledger is append-only (D1) — a season being deleted is not a reason to rewrite it. |
-| `households` | everything | Hard `ON DELETE CASCADE` (account closure only; not reachable from the app) |
+| `seasons` | `diary_entries`, `expenses`, `revenues` | Lan xoá mềm |
+| `seasons` | `stock_transactions` **có** `diary_entry_id` | Lan xoá mềm **+ hoàn kho**. Công việc không xảy ra thì phân bón không được dùng — cùng quy tắc với việc xoá một nhật ký (bất biến I3). |
+| `seasons` | `stock_transactions` **không có** `diary_entry_id` | **Gỡ liên kết, không xoá.** `season_id` được đặt về NULL và dòng sống sót. Đây là những lần mua thật được ghi vào mùa vụ; xoá chúng sẽ xoá một giao dịch đã thực sự xảy ra và âm thầm thay đổi số tồn của một vật tư mà nông dân vẫn đang có trong nhà. Sổ cái là chỉ-thêm (D1) — mùa vụ bị xoá không phải lý do để viết lại nó. |
+| `diary_entries` | `stock_transactions` (có `diary_entry_id`) | Lan xoá mềm **+ hoàn kho** (§9.2) |
+| `stock_transactions` | `expenses` (qua `stock_transaction_id`) | Lan xoá mềm |
+| `supplies` | `stock_transactions` | **Chặn.** Một vật tư đã có lịch sử giao dịch không thể xoá — API trả về 409 và hướng người dùng sang `is_archived`. Hai lý do, đều liên quan tới *thiết bị khác*: bia mộ khiến WatermelonDB xoá dòng đó khỏi mọi máy, nên nhật ký vụ trước sẽ hiển thị tên vật tư trống; và các dòng sổ cái mang giá mà mùa vụ đã qua được hạch toán, nên gỡ bỏ mục danh mục chúng trỏ tới là viết lại lịch sử đó. Một vật tư đã lưu trữ vẫn đồng bộ bình thường và vẫn giữ sổ cái của nó. |
+| `households` | tất cả | `ON DELETE CASCADE` cứng (chỉ khi đóng tài khoản; không truy cập được từ ứng dụng) |
 
 ---
 
-## 9. Derived Values & Business Invariants
+## 9. Giá trị dẫn xuất và bất biến nghiệp vụ
 
-These are the properties that must hold after **any** sequence of operations, online or offline, and they are what the test suites in Issues #25, #26, #29, and #40 assert.
+Đây là những tính chất phải đúng sau **mọi** chuỗi thao tác, dù online hay offline, và là thứ mà các bộ test ở Issue #25, #26, #29, #40 khẳng định.
 
-### 9.1 Inventory level
+### 9.1 Mức tồn kho
 
 ```
-on_hand(supply) = Σ quantity WHERE txn_type='in'     AND deleted_at IS NULL
+on_hand(vật_tư) = Σ quantity WHERE txn_type='in'     AND deleted_at IS NULL
                 + Σ quantity WHERE txn_type='adjust' AND deleted_at IS NULL
                 − Σ quantity WHERE txn_type='out'    AND deleted_at IS NULL
 ```
 
-- **I1.** Computed identically by `SupplyService.current_stock()` (Python `Decimal`) and by the mobile `stockLevel()` reducer. A test fixture of 20 mixed transactions must produce byte-identical results on both.
-- **I2.** `on_hand` may legitimately go **negative** — a farmer can log using fertiliser they forgot to record buying. The app warns but never blocks. Blocking would force the farmer to abandon the log entry, and a missing log is worse than a negative number they can correct later. The negative value is a visible prompt to record the missing stock-in.
+- **I1.** Được tính giống hệt nhau bởi `supply_service.stock_levels()` (dùng `Decimal` của Python) và bởi hàm rút gọn `stockLevel()` phía mobile. Một bộ dữ liệu mẫu 20 giao dịch hỗn hợp phải cho kết quả giống nhau từng byte ở cả hai phía.
+- **I2.** `on_hand` **được phép âm** — nông dân có thể ghi dùng phân bón mà quên ghi lúc mua. Ứng dụng cảnh báo nhưng không bao giờ chặn. Chặn sẽ buộc nông dân bỏ luôn bản ghi nhật ký, mà thiếu nhật ký còn tệ hơn một con số âm họ có thể sửa sau. Con số âm chính là lời nhắc nhìn thấy được để ghi bổ sung lần nhập kho còn thiếu.
 
-### 9.2 Stock restore — "hoàn kho" (Issues #25, #26)
+### 9.2 Hoàn kho (Issue #25, #26)
 
-Let `D` be a diary entry and `T(D)` its child `stock_transactions` (`diary_entry_id = D.id`, `txn_type='out'`).
+Gọi `D` là một nhật ký và `T(D)` là tập `stock_transactions` con của nó (`diary_entry_id = D.id`, `txn_type='out'`).
 
-**On update of D's supply usage** — the service reconciles `T(D)` against the submitted list, matched by `supply_id`:
+**Khi sửa lượng vật tư của D** — service đối chiếu `T(D)` với danh sách được gửi lên, khớp theo `supply_id`:
 
-| Case | Action |
+| Trường hợp | Hành động |
 |---|---|
-| Supply in new list, not in old | Insert a new `out` transaction + its `diary_auto` expense |
-| Supply in both, quantity changed | Update `quantity`, recompute `total_cost`, update the linked expense `amount` |
-| Supply in both, quantity unchanged | No write (do not bump `updated_at` — a no-op write creates a phantom conflict for another device) |
-| Supply in old list, not in new | Soft-delete the transaction + its linked expense → stock returns to inventory |
+| Vật tư có trong danh sách mới, không có trong cũ | Chèn giao dịch `out` mới + chi phí `diary_auto` của nó |
+| Có ở cả hai, số lượng đổi | Cập nhật `quantity`, tính lại `total_cost`, cập nhật `amount` của chi phí liên kết |
+| Có ở cả hai, số lượng không đổi | **Không ghi gì** (không đẩy `updated_at` — một lần ghi rỗng sẽ tạo ra xung đột giả cho thiết bị khác) |
+| Có trong danh sách cũ, không có trong mới | Xoá mềm giao dịch + chi phí liên kết → vật tư quay lại kho |
 
-**On delete of D:** soft-delete every row in `T(D)` and every expense linked to them.
+Trường hợp thứ ba quan trọng hơn vẻ ngoài của nó. Đây không phải tối ưu hoá. Chạm vào một dòng sẽ đẩy `updated_at`, mà `updated_at` là thứ dẫn dắt ghi-sau-thắng. Ghi đè một dòng không thay đổi sẽ **chế tạo ra một xung đột** với thiết bị khác đang sửa hợp lệ chính dòng đó, và chỉnh sửa của thiết bị kia sẽ thua.
 
-- **I3.** For any diary entry, `create → edit → delete` returns `on_hand` for every touched supply to **exactly** its pre-create value. Asserted with `Decimal` equality, not approximate comparison.
-- **I4.** The restore is idempotent — applying it twice (as a sync retry will) produces the same state as applying it once.
-- **I5.** The mobile implementation runs entirely inside one WatermelonDB `writer` block, so an app crash mid-restore cannot leave a half-restored inventory.
+**Khi xoá D:** xoá mềm mọi dòng trong `T(D)` và mọi chi phí liên kết với chúng.
 
-### 9.3 Auto-generated expense (Issue #29)
+- **I3.** Với bất kỳ nhật ký nào, chuỗi `tạo → sửa → xoá` đưa `on_hand` của mọi vật tư bị chạm tới về **đúng bằng** giá trị trước khi tạo. Khẳng định bằng so sánh `Decimal` tuyệt đối, không phải so sánh xấp xỉ.
+- **I4.** Việc hoàn kho là idempotent — áp dụng hai lần (như một lần thử lại đồng bộ sẽ làm) cho ra cùng trạng thái với áp dụng một lần.
+- **I5.** Bản cài đặt phía mobile chạy hoàn toàn bên trong một khối `writer` của WatermelonDB, nên ứng dụng sập giữa chừng không thể để lại tồn kho hoàn một nửa.
 
-For every `stock_transactions` row with `txn_type = 'out'` **and** `diary_entry_id IS NOT NULL`, exactly one expense exists with:
+### 9.3 Chi phí tự sinh (Issue #29)
+
+Với mỗi dòng `stock_transactions` có `txn_type = 'out'` **và** `diary_entry_id IS NOT NULL`, tồn tại đúng một chi phí với:
 
 ```
 expenses.stock_transaction_id = txn.id
 expenses.source               = 'diary_auto'
 expenses.category             = 'supply'
 expenses.amount               = txn.total_cost
-expenses.season_id            = txn.season_id  (falls back to the diary entry's season)
+expenses.season_id            = txn.season_id  (dự phòng: mùa vụ của nhật ký)
 expenses.expense_date         = txn.txn_date
 ```
 
-- **I6.** Enforced structurally by the unique index on `stock_transaction_id` — the invariant cannot be violated even by a buggy service, because the database refuses the second row.
-- **I7.** A stock-out recorded directly from the inventory screen (`diary_entry_id IS NULL`) generates **no** expense. Rationale: that movement is a stock-take or a transfer, and the money was already recorded as an expense when the supply was bought. Auto-generating here would double-count.
-- **I8.** Server-computed and client-computed `amount` for the same input must be equal to the cent, which follows from §7.1's rounding contract.
+- **I6.** Được đảm bảo về mặt cấu trúc bởi index duy nhất trên `stock_transaction_id` — bất biến này không thể bị vi phạm kể cả bởi một service có lỗi, vì database từ chối dòng thứ hai.
+- **I7.** Một lần xuất kho ghi thẳng từ màn hình vật tư (`diary_entry_id IS NULL`) sinh **không** chi phí nào. Lý do: giao dịch đó là kiểm kê hoặc luân chuyển, và tiền đã được ghi nhận là chi phí lúc mua vật tư. Tự sinh ở đây sẽ tính hai lần.
+- **I8.** `amount` do máy chủ tính và do client tính với cùng đầu vào phải bằng nhau tới từng đơn vị tiền, điều này suy ra từ hợp đồng làm tròn ở §7.1.
 
-### 9.4 Season financial summary
+### 9.4 Tổng kết tài chính mùa vụ
 
 ```
 total_cost    = Σ expenses.amount  WHERE season_id = S AND deleted_at IS NULL
@@ -785,35 +805,37 @@ total_revenue = Σ revenues.amount  WHERE season_id = S AND deleted_at IS NULL
 profit        = total_revenue − total_cost
 ```
 
-- **I9.** Because supply consumption becomes a `diary_auto` expense, `total_cost` already includes it. There is no separate "add supply costs" step — double-counting is structurally impossible.
-- **I10.** `profit` is never stored. Storing it would require invalidation on every one of the many writes that can affect it, across two databases, one of which is frequently offline.
+- **I9.** Vì tiêu thụ vật tư đã trở thành chi phí `diary_auto`, `total_cost` đã bao gồm nó rồi. Không có bước "cộng thêm chi phí vật tư" riêng — tính hai lần là điều không thể về mặt cấu trúc.
+- **I10.** `profit` không bao giờ được lưu. Lưu nó sẽ đòi hỏi vô hiệu hoá cache ở mỗi trong số rất nhiều lần ghi có thể ảnh hưởng tới nó, trên hai cơ sở dữ liệu, mà một trong hai thường xuyên offline.
 
 ---
 
-## 10. Index Plan
+## 10. Kế hoạch đánh index
 
-### 10.1 Mandatory — the sync path
+### 10.1 Bắt buộc — đường đồng bộ
 
-On **every** synced table:
+Trên **mọi** bảng được đồng bộ:
 
 ```sql
-CREATE INDEX ix_<table>_sync ON <table> (household_id, server_updated_at);
+CREATE INDEX ix_<bảng>_sync ON <bảng> (household_id, server_updated_at);
 ```
 
-This is the sole index the pull query uses, and the pull query is the hottest and most latency-sensitive in the system. Composite order matters: `household_id` first (equality) then `server_updated_at` (range).
+Đây là index duy nhất mà truy vấn pull dùng, và truy vấn pull là truy vấn nóng nhất, nhạy cảm độ trễ nhất của hệ thống. Thứ tự cột quan trọng: `household_id` trước (so bằng) rồi `server_updated_at` (so khoảng).
 
-### 10.2 List and detail screens
+### 10.2 Màn hình danh sách và chi tiết
 
 ```sql
-CREATE INDEX ix_seasons_household        ON seasons (household_id, start_date DESC)
+CREATE INDEX ix_seasons_household_start  ON seasons (household_id, start_date DESC)
     WHERE deleted_at IS NULL;
 CREATE INDEX ix_diary_season_date        ON diary_entries (season_id, entry_date DESC)
     WHERE deleted_at IS NULL;
 CREATE INDEX ix_diary_worktype           ON diary_entries (household_id, work_type, entry_date DESC)
     WHERE deleted_at IS NULL;
-CREATE INDEX ix_supplies_household       ON supplies (household_id, category, name)
+CREATE INDEX ix_supplies_household_cat   ON supplies (household_id, category, name)
     WHERE deleted_at IS NULL;
-CREATE INDEX ix_stock_supply             ON stock_transactions (supply_id, txn_date DESC)
+CREATE INDEX ix_supplies_active          ON supplies (household_id, category, name)
+    WHERE deleted_at IS NULL AND is_archived = false;
+CREATE INDEX ix_stock_supply_date        ON stock_transactions (supply_id, txn_date DESC)
     WHERE deleted_at IS NULL;
 CREATE INDEX ix_stock_diary              ON stock_transactions (diary_entry_id)
     WHERE deleted_at IS NULL AND diary_entry_id IS NOT NULL;
@@ -825,108 +847,123 @@ CREATE INDEX ix_revenues_season_date     ON revenues (season_id, revenue_date)
     WHERE deleted_at IS NULL;
 ```
 
-Partial indexes (`WHERE deleted_at IS NULL`) are used throughout because every application query excludes tombstones, while the tombstones themselves are only ever read by the sync path — which uses the §10.1 index instead. This keeps the application indexes from growing with dead rows.
+Index bộ phận (`WHERE deleted_at IS NULL`) được dùng xuyên suốt vì mọi truy vấn ứng dụng đều loại bia mộ, còn bản thân bia mộ chỉ được đường đồng bộ đọc — mà đường đó dùng index ở §10.1. Nhờ vậy các index ứng dụng không phình to theo số dòng chết.
 
-### 10.3 Uniqueness
+### 10.3 Ràng buộc duy nhất
 
 ```sql
 CREATE UNIQUE INDEX uq_expense_per_stock_txn ON expenses (stock_transaction_id)
     WHERE stock_transaction_id IS NOT NULL;
--- name_key, NOT lower(name): see section 5.5 and
+
+-- name_key, KHÔNG phải lower(name): xem §5.5 và
 -- Error_Postgres_Locale_Case_Folding.md
 CREATE UNIQUE INDEX uq_supply_key_unit       ON supplies (household_id, name_key, unit)
     WHERE deleted_at IS NULL;
-CREATE UNIQUE INDEX uq_users_email           ON users (email);
+
+CREATE UNIQUE INDEX uq_users_email_lower     ON users (lower(email));
 ```
 
-### 10.4 WatermelonDB indexes
+### 10.4 Index phía WatermelonDB
 
-WatermelonDB supports `isIndexed: true` per column. Applied to: every `*_id` foreign key, plus `entry_date`, `txn_date`, `expense_date`, `revenue_date`, `work_type`, and `txn_type` — the columns the offline list screens filter and sort on. On-device datasets are small (a household accumulates on the order of 10³–10⁴ rows over a season), so the write-amplification cost is negligible next to keeping list scrolling smooth on a low-end Android phone.
+WatermelonDB hỗ trợ `isIndexed: true` cho từng cột. Áp dụng cho: mọi khoá ngoại `*_id`, cộng `entry_date`, `txn_date`, `expense_date`, `revenue_date`, `work_type` và `txn_type` — những cột mà màn hình danh sách ngoại tuyến lọc và sắp xếp theo. Dữ liệu trên thiết bị nhỏ (một nông hộ tích luỹ cỡ 10³–10⁴ dòng qua một mùa vụ), nên chi phí khuếch đại ghi là không đáng kể so với việc giữ cho danh sách cuộn mượt trên điện thoại Android cấu hình thấp.
 
 ---
 
-## 11. Reporting Query Requirements
+## 11. Yêu cầu truy vấn báo cáo
 
-The three required charts, with the data contract each needs. All three must be computable **from local WatermelonDB data alone** (Issue #47) and are additionally exposed as backend endpoints (Issue #42) that must return identical numbers for the same dataset.
+Ba biểu đồ bắt buộc, kèm hợp đồng dữ liệu mỗi biểu đồ cần. Cả ba phải tính được **chỉ từ dữ liệu WatermelonDB cục bộ** (Issue #47) và đồng thời được lộ ra thành các endpoint backend (Issue #42) phải trả về cùng những con số với cùng bộ dữ liệu.
 
-### 11.1 Income vs Expense over time — `GET /reports/income-expense`
+**Kiến trúc:** gộp trong SQL, chia nhóm trong Python. SQL gom theo các cột `*_day_local` đã lưu — đã đánh index, đã mang offset UTC+7 cố định — giữ quy tắc "đây là ngày nào" ở đúng một chỗ. Gộp ngày thành tuần và tháng, cùng việc tạo ra các nhóm rỗng ở giữa, là phép số học lịch mà SQL diễn đạt tệ còn Python diễn đạt rõ ràng. Một mùa vụ dài nhất vài trăm ngày, nên số dòng tới Python là không đáng kể.
 
-Params: `season_id` (required), `granularity` = `day` | `week` | `month` (default `month`).
+### 11.1 Thu chi theo thời gian — `GET /reports/income-expense`
+
+Tham số: `season_id` (bắt buộc), `granularity` = `day` | `week` | `month` (mặc định `month`).
 
 ```jsonc
-{ "season_id": "…", "granularity": "month",
-  "buckets": [ { "period": "2026-09", "revenue": 0, "expense": 4250000, "profit": -4250000 } ],
-  "totals": { "revenue": 62000000, "expense": 21400000, "profit": 40600000 } }
+{ "season_id": "…", "season_name": "Vụ Đông Xuân 2026", "granularity": "month",
+  "buckets": [ { "period": "2026-09", "revenue": "0.00", "expense": "4250000.00",
+                 "profit": "-4250000.00" } ],
+  "totals": { "revenue": "62000000.00", "expense": "21400000.00",
+              "profit": "40600000.00" } }
 ```
 
-Requirement: buckets are **dense** — a month with no activity inside the season window appears with zeros. A sparse series makes a line chart lie about the shape of spending.
+Yêu cầu: các nhóm phải **dày đặc** — một tháng không có hoạt động bên trong cửa sổ mùa vụ vẫn xuất hiện với giá trị 0. Chuỗi thưa khiến biểu đồ đường nói dối về hình dạng chi tiêu.
 
-### 11.2 Supply consumption by type — `GET /reports/supply-consumption`
+Khoảng thời gian là cửa sổ đã khai báo của mùa vụ, được mở rộng để bao mọi hoạt động ghi nhận ngoài cửa sổ đó — nếu không, tổng của biểu đồ sẽ không khớp với tổng kết mùa vụ.
 
-Params: `season_id` (optional — omit for all seasons), `group_by` = `category` | `supply` (default `category`).
+### 11.2 Vật tư tiêu thụ theo loại — `GET /reports/supply-consumption`
+
+Tham số: `season_id` (tuỳ chọn — bỏ trống để tính mọi mùa vụ), `group_by` = `category` | `supply` (mặc định `category`).
 
 ```jsonc
 { "group_by": "category",
   "items": [ { "key": "fertilizer", "label": "Phân bón",
-               "quantity": 340.5, "unit_mixed": true, "total_cost": 8900000, "share_pct": 41.6 } ],
-  "total_cost": 21400000 }
+               "quantity": "340.500", "unit": null, "unit_mixed": true,
+               "total_cost": "8900000.00", "share_pct": "41.6",
+               "transaction_count": 12 } ],
+  "total_cost": "21400000.00" }
 ```
 
-Requirement: aggregates only `txn_type = 'out'`. `unit_mixed` flags that a category summed across `kg` and `L` — the chart must then label the axis by **cost**, not quantity, because summing kilograms and litres is meaningless. This is why `total_cost` is the primary measure.
+Yêu cầu: chỉ gộp `txn_type = 'out'`. Cờ `unit_mixed` báo rằng nhóm này cộng gộp cả `kg` lẫn `L` — khi đó biểu đồ phải ghi nhãn trục theo **chi phí**, không theo số lượng, vì cộng ki-lô-gam với lít là vô nghĩa. Đây là lý do `total_cost` mới là thước đo chính, và `unit` được để trống trong trường hợp này.
 
-### 11.3 Season profit comparison — `GET /reports/season-comparison`
+### 11.3 So sánh lợi nhuận giữa các mùa vụ — `GET /reports/season-comparison`
 
-Params: `limit` (default 10), `status` (optional filter).
+Tham số: `limit` (mặc định 10), `status` (bộ lọc tuỳ chọn).
 
 ```jsonc
 { "seasons": [ { "season_id": "…", "name": "Vụ Đông Xuân 2026", "crop_type": "Lúa",
-                 "start_date": 1767225600000, "revenue": 62000000,
-                 "expense": 21400000, "profit": 40600000, "margin_pct": 65.5 } ] }
+                 "status": "closed", "start_date": 1767225600000,
+                 "revenue": "62000000.00", "expense": "21400000.00",
+                 "profit": "40600000.00", "margin_pct": "65.5" } ],
+  "best_season_id": "…", "worst_season_id": "…" }
 ```
 
-Requirement: renders correctly with exactly one season (Issue #46) — a single-bar chart, not an error state.
+Yêu cầu: hiển thị đúng với **đúng một** mùa vụ (Issue #46) — một biểu đồ một cột, không phải trạng thái lỗi. Mùa vụ chưa có dữ liệu vẫn xuất hiện ở mức 0 chứ không biến mất; nông dân so sánh cần thấy vụ họ vừa tạo.
 
-### 11.4 Parity test
+### 11.4 Test song song
 
-A backend test seeds a fixed dataset, calls all three endpoints, and asserts the JSON matches a golden fixture. The **same** fixture is committed to `mobile/src/__tests__/fixtures/` and asserted against the local reducers in Jest. The two suites reading one fixture is what makes "the chart shows the same number offline and online" a tested property rather than an aspiration.
+Một test backend gieo một bộ dữ liệu cố định, gọi các endpoint, và khẳng định JSON khớp với một *golden fixture* (`backend/tests/fixtures/reports_golden.json`). **Cùng file fixture đó** được commit để bộ test Jest phía mobile khẳng định các hàm rút gọn cục bộ của nó. Hai bộ test đọc chung một file chính là điều biến "biểu đồ hiện cùng con số khi ngoại tuyến và trực tuyến" thành một tính chất được kiểm chứng thay vì một mong đợi.
 
 ---
 
-## 12. Seed Data for Local Development
+## 12. Dữ liệu mẫu cho môi trường phát triển
 
-`python -m app.seed` provisions a realistic dataset. Realistic matters: a report chart with three rows proves nothing about how it renders with a real season's data.
+`python -m app.seed` tạo một bộ dữ liệu thực tế. Tính thực tế là quan trọng: một biểu đồ báo cáo với ba dòng dữ liệu không chứng minh được gì về cách nó hiển thị với dữ liệu một mùa vụ thật.
 
-| Entity | Count | Notes |
+| Thực thể | Số lượng | Ghi chú |
 |---|---|---|
-| Household | 1 | "Hộ ông Lê Văn A", Lâm Đồng |
-| Users | 2 | `demo@agrilog.vn` / `demo1234`, plus a second user for two-device tests |
-| Seasons | 3 | One `closed` (profitable), one `harvested` (loss-making), one `active` |
-| Supplies | 12 | Across all six categories, mixed units |
-| Stock transactions | ~180 | Realistic in/out mix over 6 months |
-| Diary entries | ~90 | All work types, clustered realistically (spraying in bursts) |
-| Expenses | ~110 | ~60 % `diary_auto`, ~40 % `manual` |
-| Revenues | 8 | Multiple partial harvest sales per season |
+| Nông hộ | 1 | "Hộ ông Lê Văn A", Lâm Đồng |
+| Người dùng | 2 | `demo@agrilog.vn` / `demo1234`, cộng một người thứ hai cho bài kiểm thử hai thiết bị |
+| Mùa vụ | 3 | Một `closed` (có lãi), một `harvested` (lỗ), một `active` |
+| Vật tư | 12 | Trải đủ sáu nhóm, đơn vị hỗn hợp |
+| Giao dịch kho | ~180 | Hỗn hợp nhập/xuất thực tế qua 6 tháng |
+| Nhật ký | ~90 | Đủ mọi loại công việc, phân bố thực tế (phun thuốc theo đợt) |
+| Chi phí | ~110 | ~60 % `diary_auto`, ~40 % `manual` |
+| Doanh thu | 8 | Nhiều lần bán từng phần trong mỗi vụ |
 
-Flags: `--reset` drops and recreates; `--large` scales to 5,000+ rows for the Issue #39 sync load test and the Issue #50 list-virtualisation profiling.
+Tuỳ chọn: `--reset` xoá và dựng lại; `--large` mở rộng tới 5.000+ dòng cho bài kiểm thử tải đồng bộ (Issue #39) và đo hiệu năng ảo hoá danh sách (Issue #50).
+
+**Tài khoản và mùa vụ được tạo qua chính tầng service của ứng dụng**, không phải bằng cách chèn dòng trực tiếp — seed bằng một đường code song song chính là cách một script seed tạo ra những dòng dữ liệu mà bản thân ứng dụng không bao giờ tạo được. Phần nhật ký, giao dịch kho và chi phí sẽ được bổ sung khi các service tương ứng hoàn thiện, vì chúng phải đi qua logic hoàn kho và tự sinh chi phí để thoả các bất biến ở §9.
 
 ---
 
-## 13. Open Decisions Recorded
+## 13. Các quyết định được ghi nhận
 
-Assumptions made in this design that the thesis report must state explicitly, and that a reviewer could reasonably challenge.
+Những giả định trong thiết kế này cần được nêu tường minh trong báo cáo đồ án, và là những điểm mà người phản biện có thể chất vấn một cách hợp lý.
 
-| # | Decision | Rationale | What breaks if wrong |
+| # | Quyết định | Lý do | Điều gì hỏng nếu sai |
 |---|---|---|---|
-| D1 | Inventory is derived from a ledger, never stored as a counter | Two offline devices decrementing a cached counter produce an undetectably wrong total | Nothing — this is strictly safer; the cost is a `SUM` per read |
-| D2 | Last-write-wins by device `updated_at`, whole-record | Per-field merge on the server would need a per-field version vector — real CRDT territory, disproportionate for this scope | A concurrent edit to two *different* fields of one record loses one of them. Mitigated: rejections are reported, not silent; the client-side pull merge *is* per-field |
-| D3 | Business dates stored as epoch-ms BIGINT | Exact parity with WatermelonDB; no timezone conversion at the sync boundary | SQL date grouping needs the UTC+7 offset constant (§7.2) |
-| D4 | Fixed UTC+7, no DST | Vietnam has observed no DST since 1975 | Deploying outside Vietnam requires reworking the generated day columns |
-| D5 | Duplicate supplies from two offline devices coexist | Auto-merging two rows a human may have meant as distinct is the worse failure | Farmer sees two inventory lines and must merge manually |
-| D6 | No attachment/photo sync | Binary sync is a substantial subsystem; the proposal does not require it | Explicit non-goal, stated in the thesis |
-| D7 | `diary_auto` expenses are read-only in the UI | A hand-edited derived value diverges from its generator with no reconciliation path | Farmer must edit the diary entry to change the cost |
-| D8 | Access token 7 d / refresh 90 d | A device offline for weeks must still sync without a login prompt | Longer-lived tokens are a larger window if a phone is stolen. Accepted: the data is one household's farm records, and refresh tokens are revocable |
-| D9 | Negative stock is permitted with a warning | Blocking forces the farmer to abandon the log entry; a missing log is worse than a correctable number | Reports can briefly show a negative on-hand |
+| D1 | Tồn kho suy ra từ sổ cái, không bao giờ lưu thành bộ đếm | Hai thiết bị offline cùng trừ một bộ đếm đã cache tạo ra con số sai không phát hiện được | Không có — cách này chắc chắn an toàn hơn; cái giá chỉ là một phép `SUM` mỗi lần đọc |
+| D2 | Ghi-sau-thắng theo `updated_at` của thiết bị, ở mức toàn bản ghi | Hợp nhất theo từng trường ở máy chủ sẽ cần vector phiên bản cho từng trường — thực chất là lãnh địa CRDT, quá tầm với phạm vi này | Hai chỉnh sửa đồng thời vào hai trường *khác nhau* của một bản ghi thì mất một bên. Giảm nhẹ: các lần từ chối được báo cáo chứ không âm thầm; và việc hợp nhất phía client khi pull *thì có* theo từng trường |
+| D3 | Ngày nghiệp vụ lưu dạng epoch-ms BIGINT | Song song chính xác với WatermelonDB; không có phép chuyển múi giờ nào tại ranh giới đồng bộ | Gom nhóm theo ngày trong SQL cần hằng số offset UTC+7 (§7.2) |
+| D4 | Cố định UTC+7, không có giờ mùa hè | Việt Nam không áp dụng DST từ 1975 | Triển khai ngoài Việt Nam sẽ phải làm lại các cột sinh |
+| D5 | Vật tư trùng từ hai thiết bị offline cùng tồn tại | Tự động gộp hai dòng mà con người có thể chủ ý tạo riêng là kiểu hỏng tệ hơn | Nông dân thấy hai dòng tồn kho và phải gộp thủ công |
+| D6 | Không đồng bộ ảnh / tệp đính kèm | Đồng bộ dữ liệu nhị phân là một hệ thống con đáng kể; đề cương không yêu cầu | Mục tiêu không theo đuổi, nêu rõ trong báo cáo |
+| D7 | Chi phí `diary_auto` là chỉ đọc trên giao diện | Một giá trị dẫn xuất bị sửa tay sẽ tách rời khỏi bộ sinh mà không có đường hoà giải | Nông dân phải sửa nhật ký để thay đổi chi phí |
+| D8 | Access token 7 ngày / refresh 90 ngày | Thiết bị offline nhiều tuần vẫn phải đồng bộ được mà không bị hỏi đăng nhập | Token sống lâu hơn là cửa sổ rủi ro lớn hơn nếu mất điện thoại. Chấp nhận: dữ liệu là hồ sơ canh tác của một hộ, và refresh token thu hồi được |
+| D9 | Cho phép tồn kho âm kèm cảnh báo | Chặn sẽ buộc nông dân bỏ luôn bản ghi nhật ký; thiếu nhật ký tệ hơn một con số sửa được | Báo cáo có thể tạm hiển thị số tồn âm |
+| D10 | Ứng dụng kết nối bằng role `agrilog`, không phải superuser `postgres` | Ứng dụng chỉ cần sở hữu hai database của mình | Chạy bằng superuser biến một lỗi injection từ vấn đề một database thành chiếm toàn cụm |
 
 ---
 
-*Change log: any modification to this document must be accompanied by a matching Alembic migration, a matching WatermelonDB `schemaMigrations` entry, and a bump of the mobile schema `version`. The three move together or sync breaks.*
+*Nhật ký thay đổi: mọi chỉnh sửa tài liệu này phải đi kèm một migration Alembic tương ứng, một mục `schemaMigrations` tương ứng của WatermelonDB, và một lần tăng `version` của schema mobile. Ba thứ đó đi cùng nhau, nếu không đồng bộ sẽ hỏng.*
