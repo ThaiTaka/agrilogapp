@@ -488,6 +488,8 @@ CI chạy lint + test cho mỗi push và PR ở cả hai codebase (Issue #18) v�
 | [Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md) | Service PostgreSQL 18 chưa đăng ký — chẩn đoán và cách sửa | #13 |
 | [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) | `now()` và `clock_timestamp()` — lỗi mất dữ liệu âm thầm ở con trỏ pull | #9, #32 |
 | [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md) | `lower()` không hạ chữ tiếng Việt dưới collation `C` | #23 |
+| [Error_WatermelonDB_BuildConfig_AGP9.md](Error_WatermelonDB_BuildConfig_AGP9.md) | WatermelonDB không biên dịch được dưới AGP 9 — thiếu `buildFeatures.buildConfig` | #16 |
+| [Error_Metro_Watcher_Crash_CXX_Build.md](Error_Metro_Watcher_Crash_CXX_Build.md) | Metro bundler sập khi thiếu Watchman, lẫn với lỗi "Unable to load script" | #16, #17 |
 | `Data_Requirements_*.md` | Đặc tả mô hình dữ liệu từng module, viết trước khi bắt đầu module đó | — |
 | `Error_*.md` | Mô tả lỗi → nguyên nhân gốc → cách sửa từng bước, mỗi sự cố một file | — |
 
