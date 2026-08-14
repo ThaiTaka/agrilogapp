@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-be-vietnam), system-ui, sans-serif;
+
+  /* Cùng bảng màu với ứng dụng di động (mobile/src/theme.ts), để hai nửa của
+     cùng một sản phẩm trông như một. */
+  --color-agri-50: #f1f8e9;
+  --color-agri-100: #dcedc8;
+  --color-agri-500: #4caf50;
+  --color-agri-600: #43a047;
+  --color-agri-700: #2e7d32;
+  --color-agri-800: #1b5e20;
+}
+
+/* Trang quản trị dùng nền sáng cố định: nó là công cụ làm việc trên màn hình
+   máy tính, và một bảng số liệu đổi màu theo thiết lập hệ điều hành của từng
+   người là thứ gây khó khi hai người cùng nhìn một màn hình. */
+html {
+  color-scheme: light;
+}

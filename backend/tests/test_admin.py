@@ -357,6 +357,46 @@ class TestAppSettingsSingleRow:
         assert db.get(AppSetting, 1) is not None
 
 
+@pytest.mark.db
+class TestLoginReportsAdminFlag:
+    """The web dashboard reads this to decide whether to sign someone in.
+
+    It is a convenience, not the access check — but if it were wrong in the
+    permissive direction the dashboard would admit a non-admin to a console
+    where every panel 403s, which reads as a broken app rather than a refusal.
+    """
+
+    def test_ordinary_user_login_reports_false(self, api, tenant):
+        r = api.post(
+            "/api/v1/auth/login",
+            json={"email": "ho1@agrilog.vn", "password": "matkhau123"},
+        )
+        assert r.status_code == 200
+        assert r.json()["user"]["is_admin"] is False
+
+    def test_admin_login_reports_true(self, api, admin_tenant):
+        r = api.post(
+            "/api/v1/auth/login",
+            json={"email": "quantri@agrilog.vn", "password": "matkhau123"},
+        )
+        assert r.json()["user"]["is_admin"] is True
+
+    def test_registration_cannot_ask_for_admin(self, api):
+        """Mass-assignment guard on the one endpoint anyone can reach."""
+        r = api.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "kedaokhoet@agrilog.vn",
+                "password": "matkhau123",
+                "full_name": "Kẻ đào khoét",
+                "household_name": "Hộ thử",
+                "is_admin": True,
+            },
+        )
+        assert r.status_code == 201
+        assert r.json()["user"]["is_admin"] is False
+
+
 class TestSchemas:
     """No database needed."""
 

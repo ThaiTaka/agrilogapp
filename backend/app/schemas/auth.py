@@ -92,6 +92,11 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     is_active: bool
+    # The caller's OWN flag, so it discloses nothing about anyone else. The web
+    # dashboard reads it to avoid signing someone in to a console where every
+    # panel would 403. It is NOT the access check: that stays server-side in
+    # `get_current_admin`, on every request, against the live database row.
+    is_admin: bool = False
 
 
 class TokenPair(BaseModel):
