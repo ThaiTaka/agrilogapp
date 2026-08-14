@@ -7,6 +7,7 @@ may be lazily imported.
 
 from app.db.base import SYNC_TABLE_ORDER, Base
 from app.models.account import Household, RefreshToken, User
+from app.models.admin import AppSetting
 from app.models.diary import DiaryEntry
 from app.models.enums import (
     ExpenseCategory,
@@ -42,6 +43,7 @@ assert tuple(SYNC_MODELS.keys()) == SYNC_TABLE_ORDER, (
 __all__ = [
     "SYNC_MODELS",
     "SYNC_TABLE_ORDER",
+    "AppSetting",
     "Base",
     "DiaryEntry",
     "Expense",

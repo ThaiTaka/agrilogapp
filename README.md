@@ -274,6 +274,20 @@ ruff check app tests                         # kiểm tra lint
 
 Tài khoản mẫu sau khi seed: `demo@agrilog.vn` / `demo1234`
 
+### 7.7 Cấp quyền quản trị (cho Web Admin Dashboard)
+
+Toàn bộ `/api/v1/admin/*` yêu cầu cột `users.is_admin`. Cột này **không endpoint nào cấp được** — kể cả đăng ký lẫn API khoá/mở tài khoản — vì một endpoint cấp được quyền quản trị là một endpoint có thể bị lừa để cấp nó. Việc thăng quyền diễn ra ngoài luồng HTTP, cần quyền truy cập shell của máy chủ:
+
+```powershell
+python -m scripts.make_admin thai@example.com            # cấp quyền
+python -m scripts.make_admin thai@example.com --revoke   # thu hồi
+python -m scripts.make_admin --list                      # liệt kê
+```
+
+Script từ chối thu hồi tài khoản quản trị cuối cùng — mất nó thì phải sửa PostgreSQL bằng tay mới vào lại được.
+
+**Chế độ bảo trì** bật/tắt qua `PUT /api/v1/admin/maintenance`. Ứng dụng di động đọc trạng thái ở `GET /api/v1/maintenance` — endpoint này **không cần đăng nhập**, vì lúc cần hiện thông báo bảo trì nhất chính là lúc token của người dùng đã hết hạn.
+
 ---
 
 ## 8. Cài đặt Mobile (React Native + WatermelonDB)

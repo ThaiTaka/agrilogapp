@@ -184,6 +184,9 @@ class Tenant:
     def patch(self, url, **kw):
         return self._api.patch(url, **self._merge(kw))
 
+    def put(self, url, **kw):
+        return self._api.put(url, **self._merge(kw))
+
     def delete(self, url, **kw):
         return self._api.delete(url, **self._merge(kw))
 

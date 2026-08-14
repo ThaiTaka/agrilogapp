@@ -153,7 +153,23 @@ Chỉ bắt đầu Phase 2 khi Mục 1.1 (5 điều kiện) đạt đủ. Nếu 
 | `PATCH /api/v1/admin/users/{id}` | Khoá/mở tài khoản (`is_active`) |
 | `GET /api/v1/admin/overview` | Số liệu tổng quan cho Dashboard: tổng số household/user, hoạt động gần đây — endpoint mới, không tái dùng `/reports/*` (đang giới hạn theo household) |
 | Test | Viết test theo đúng chuẩn hiện có (`tests/test_admin.py`) — không hạ chuẩn 94% coverage |
-| **Cần Thái quyết định trước khi code** | **"Quản lý hiển thị ứng dụng" nghĩa chính xác là gì?** Đề xuất tạm: bảng `feature_flags` đơn giản (tên flag, bật/tắt, mô tả) admin toggle được — nhưng cần bạn xác nhận đây đúng là thứ đề cương yêu cầu trước khi thiết kế schema |
+
+### ✅ Bước 0 đã xong (14/08/2026)
+
+| Hạng mục | Thực tế đã làm |
+|---|---|
+| Migration | `0003_admin_and_maintenance` — thêm `users.is_admin`, tạo bảng `app_settings` một dòng (ràng buộc `CHECK (id = 1)`), chèn sẵn dòng đó |
+| Auth admin | `get_current_admin` trong `api/deps.py` — chồng lên `get_current_user`, **đọc `is_admin` từ DB chứ không từ claim trong token**, không giới hạn `household_id` |
+| `GET /admin/overview` | 9 chỉ số, endpoint mới (không tái dùng `/reports/*` vốn giới hạn theo household) |
+| `GET /admin/users` | Toàn hệ thống, phân trang, tìm kiếm không phân biệt hoa thường, lọc theo `is_active`, kèm `household_name` |
+| `PATCH /admin/users/{id}` | Khoá/mở `is_active`. Từ chối tự khoá mình và khoá admin hoạt động cuối cùng |
+| `GET /admin/households` | Phân trang, kèm số tài khoản mỗi hộ |
+| `GET`/`PUT /admin/maintenance` | Cờ bảo trì + thông báo; tắt thì tự xoá thông báo |
+| `GET /maintenance` | **Công khai, không cần auth** — app di động phải đọc được cả khi token đã hết hạn |
+| Cấp quyền admin | `scripts/make_admin.py`, ngoài luồng HTTP. Không endpoint nào cấp được `is_admin` |
+| Test | `tests/test_admin.py` — 32 test. Tổng **382 test xanh**, coverage **94%** (không tụt) |
+
+**Phạm vi rút gọn theo quyết định của Thái:** không làm bảng `feature_flags` tổng quát, chỉ `is_active` + một cờ bảo trì toàn cục.
 
 ## 2.1 Bước 1 — Khởi tạo `web/` bằng Next.js + Tailwind
 

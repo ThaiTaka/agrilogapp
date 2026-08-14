@@ -65,6 +65,12 @@ class User(Base, TimestampMixin):
     # bcrypt cost 12. Never serialised — no Pydantic response schema exposes it.
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    # Grants access to /admin/*, which is the ONE part of this API that is not
+    # scoped to a household. It is deliberately not settable through any
+    # endpoint -- not registration, not the admin user PATCH -- because an
+    # endpoint that can grant this is an endpoint that can be tricked into
+    # granting it. Promotion happens out of band: scripts/make_admin.py.
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
     household: Mapped[Household] = relationship(back_populates="users")
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(

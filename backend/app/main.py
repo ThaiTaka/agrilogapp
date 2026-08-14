@@ -139,9 +139,11 @@ def _register_v1_routers(app: FastAPI) -> None:
     Routers are added here as each module lands (auth, seasons, diary,
     supplies, finance, reports, sync).
     """
-    from app.api.v1 import auth, diary, finance, reports, seasons, supplies, sync
+    from app.api.v1 import admin, auth, diary, finance, reports, seasons, supplies, sync
 
     app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(admin.public_router, prefix=settings.API_V1_PREFIX)
     app.include_router(seasons.router, prefix=settings.API_V1_PREFIX)
     app.include_router(supplies.router, prefix=settings.API_V1_PREFIX)
     app.include_router(diary.season_router, prefix=settings.API_V1_PREFIX)

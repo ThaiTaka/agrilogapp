@@ -75,6 +75,36 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+def get_current_admin(user: CurrentUser) -> User:
+    """The identity behind /admin/*, which is NOT household-scoped.
+
+    Layered on `get_current_user` rather than decoding the token itself, so
+    admin requests still pass every check ordinary requests do — signature,
+    account still active, token/database household agreement — and there is
+    still exactly one code path that turns a request into an identity.
+
+    `is_admin` is read from the DATABASE row, never from a token claim. A
+    claim is fixed at login and would keep working for the life of the access
+    token after the flag is revoked; the row is checked on every request, so
+    revoking takes effect immediately.
+
+    403, not 404: the caller is authenticated and we are refusing them, which
+    is a different fact from the route not existing. The tenant-boundary
+    reasoning that makes NotFound the right answer elsewhere does not apply —
+    nothing about /admin/* is a secret whose existence leaks another
+    household's data.
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản này không có quyền quản trị.",
+        )
+    return user
+
+
+CurrentAdmin = Annotated[User, Depends(get_current_admin)]
+
+
 def get_current_household_id(user: CurrentUser) -> uuid.UUID:
     """The tenant for this request.
 
