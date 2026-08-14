@@ -111,6 +111,27 @@ adb exec-out screencap -p > screenshot_<ten_man_hinh>.png
 2. **Thiết bị Android vật lý:** cài và chạy thử trên ít nhất 1 điện thoại thật — hiệu năng SQLite/JSI, bàn phím ảo có che input, tab bar 60dp có đủ lớn.
 3. **Đồng bộ đa thiết bị (Issue #40):** 2 máy ảo (hoặc 1 ảo + 1 thật), sửa cùng 1 bản ghi khi cả 2 offline, đưa online, xác nhận giải quyết xung đột đúng README §9.4.
 
+## 1.6b Kết quả Bước 3 — chạy máy ảo tự động (14/08/2026)
+
+Chạy trên `emulator-5554` (Android 13, 1080×2400), điều hướng tự động bằng `uiautomator dump` + `adb input tap` — tra phần tử theo cây view thật thay vì toạ độ cứng.
+
+| Kiểm chứng | Kết quả |
+|---|---|
+| Đăng nhập → 4 tab → 12 màn hình | Đi hết, **không crash, không red screen, không exception JS** |
+| Tồn kho tự cập nhật sau Nhập kho (lỗi đã sửa) | **0 → 50 kg** ngay khi quay lại, không cần làm mới |
+| Tóm tắt vật tư dưới thẻ nhật ký (lỗi đã sửa) | Hiện `• DamUre: 10 kg — 120.000 ₫` |
+| Báo cáo tự làm mới khi quay lại tab (lỗi đã sửa) | Biểu đồ có ngay khoản chi tạo sau lần xem trước |
+| M2 — dòng giải thích mật khẩu | Hiện khi < 8 ký tự, biến mất khi đủ |
+| M3 — bộ chọn ngày mùa vụ | Đủ ngày bắt đầu/kết thúc; cảnh báo ngày sai hiện đúng và **nút Lưu bị vô hiệu hoá** |
+| Khoản chi tự động từ nhật ký | Sinh đúng 120.000 ₫, có nhãn "Tự động từ nhật ký", mở ra ở chế độ chỉ đọc (D7) |
+| 3 biểu đồ báo cáo | Vẽ đủ: đường thu/chi, tròn vật tư 100% phân bón, cột so sánh mùa vụ 🏆 |
+
+**Giới hạn của cách tự động này** (để lần sau không mất thời gian lại):
+
+- `adb shell input text` **làm mất chữ hoa** — tài khoản test phải dùng mật khẩu toàn chữ thường. Không phải lỗi app.
+- Bàn phím ảo che 1/3 dưới màn hình; tap vào nút nằm dưới đó rơi trúng **phím cách**, âm thầm chèn dấu cách rồi kịch bản vẫn chạy tiếp. Phải đóng bàn phím và kiểm chứng bằng `dumpsys input_method`.
+- Tiêu đề header **trùng tên** với nút submit ("Ghi nhật ký", "Thêm vật tư"). Tra theo text sẽ tap vào tiêu đề, form không lưu, mà kịch bản lại tưởng xong rồi đi kiểm tra chính cái form đó — **dương tính giả**. Bắt buộc chỉ chấp nhận phần tử `clickable=true`. Tôi đã dính đúng bẫy này hai lần trong phiên.
+
 ## 1.7 Cổng chuyển sang Phase 2
 
 Chỉ bắt đầu Phase 2 khi Mục 1.1 (5 điều kiện) đạt đủ. Nếu có bug không chặn (non-blocking) còn tồn, ghi vào một mục "Nợ kỹ thuật Mobile" ở cuối file này thay vì để trôi mất.
@@ -199,6 +220,9 @@ Phát hiện trong Bước 1 (14/08/2026), **không chặn Phase 2** — ghi l�
 | M2 | `LoginScreen` chỉ bật nút khi mật khẩu ≥ 8 ký tự, và **không nói lý do**. Tài khoản có mật khẩu cũ ngắn hơn sẽ thấy nút chết mà không hiểu tại sao. | Cần Thái quyết định: nới điều kiện, hay giữ và thêm dòng giải thích. |
 | M3 | `SeasonFormScreen` hiển thị ngày bắt đầu/kết thúc ở dạng chỉ đọc — chưa có bộ chọn ngày (đã ghi TODO trong code từ #20). `DateStepper` đã có sẵn và dùng được ở nhật ký. | Là tính năng thiếu, không phải lỗi. Ngày bắt đầu mặc định = hôm nay vẫn đúng cho phần lớn trường hợp. |
 | M4 | 132 test hiện có **đều là test service + schema**, không có test nào cho 12 màn hình. Đúng 4 lỗi sửa hôm nay đều nằm ở tầng màn hình và không test nào bắt được. | Thêm test màn hình là một khối việc riêng, nên tính thành hạng mục có kế hoạch chứ không chèn giữa Phase 1. |
+| M5 | Logcat báo `[🍉] JSI SQLiteAdapter not available… falling back to asynchronous operation` mỗi lần khởi động. `db/index.ts` đặt `jsi: true` kèm ghi chú rằng JSI là thứ giữ cho danh sách cuộn mượt trên máy yếu — nhưng thực tế đang chạy qua bridge bất đồng bộ, tức là **không** có lợi ích đó. | Chưa gây lỗi chức năng và không cảm nhận được với lượng dữ liệu test. Nhưng đây đúng là nhóm máy mà app nhắm tới, nên cần đo lại với vài trăm bản ghi trước khi kết luận bỏ qua được. Đụng vào cấu hình native — vùng vừa vá 13/08. |
+
+**Ghi chú kiểm thử:** máy chủ có 2 tài khoản test do tôi tạo để chạy kịch bản UI — `uitest@agrilog-test.com` và `uitest2@agrilog-test.com`. Xoá được bất cứ lúc nào, không dính tới dữ liệu thật.
 
 ---
 
