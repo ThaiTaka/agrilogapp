@@ -29,10 +29,11 @@ import {TxnType} from '../../db/enums';
 import type {Season, StockTransaction, Supply} from '../../db/models';
 import {observeSeasons} from '../../services/seasons';
 import {
+  levelsFrom,
+  observeLedger,
   recordStockIn,
   recordStockOut,
   recordStockTake,
-  stockLevel,
 } from '../../services/stock';
 import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
 import {formatMoney, formatQuantity, lineTotal, parseNumberInput} from '../../utils/numeric';
@@ -70,29 +71,25 @@ export default function StockMovementScreen({
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<StockTransaction[]>([]);
 
-  const refresh = useCallback(async () => {
-    const [level, rows] = await Promise.all([
-      stockLevel(database, supply.id),
-      database
-        .get<StockTransaction>('stock_transactions')
-        .query()
-        .fetch()
-        .then(all =>
-          all
-            .filter(t => t.supplyId === supply.id)
+  // One observed query per supply feeds both the headline balance and the
+  // recent-movements list. It replaces a fetch of the ENTIRE ledger that was
+  // then filtered in JavaScript — on a phone with two seasons of history that
+  // is thousands of rows read to display eight — and being observed rather
+  // than fetched also means no setState can land after this screen unmounts.
+  useEffect(() => {
+    const subs = [
+      observeLedger(database, supply.id).subscribe(rows => {
+        setOnHand(levelsFrom(rows).get(supply.id) ?? 0);
+        setHistory(
+          [...rows]
             .sort((a, b) => b.txnDate.getTime() - a.txnDate.getTime())
             .slice(0, 8),
-        ),
-    ]);
-    setOnHand(level);
-    setHistory(rows);
+        );
+      }),
+      observeSeasons(database).subscribe(setSeasons),
+    ];
+    return () => subs.forEach(s => s.unsubscribe());
   }, [supply.id]);
-
-  useEffect(() => {
-    refresh();
-    const sub = observeSeasons(database).subscribe(setSeasons);
-    return () => sub.unsubscribe();
-  }, [refresh]);
 
   const quantity = parseNumberInput(quantityText);
   const unitCost = parseNumberInput(unitCostText) ?? supply.unitCost;

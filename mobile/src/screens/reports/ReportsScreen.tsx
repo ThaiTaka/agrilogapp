@@ -11,7 +11,8 @@
  *   3. bar    — "which season did best?" is about COMPARING magnitudes
  */
 
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {useFocusEffect} from '@react-navigation/native';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -102,27 +103,53 @@ export default function ReportsScreen() {
   useEffect(() => {
     const sub = observeSeasons(database).subscribe(rows => {
       setSeasons(rows);
-      setSeasonId(current => current ?? rows[0]?.id ?? null);
+      // Keep the current selection only if it still exists. Holding a deleted
+      // season's id left every chart empty with no way back but restarting.
+      setSeasonId(current =>
+        current && rows.some(s => s.id === current) ? current : (rows[0]?.id ?? null),
+      );
     });
     return () => sub.unsubscribe();
   }, []);
 
+  /** Invalidates in-flight loads, so a stale result cannot overwrite a newer one. */
+  const runId = useRef(0);
+
   const load = useCallback(async () => {
+    const ticket = ++runId.current;
     setLoading(true);
     const [cmp, cons, ie] = await Promise.all([
       seasonComparisonReport(database),
       seasonId ? supplyConsumptionReport(database, {seasonId}) : Promise.resolve(null),
       seasonId ? incomeExpenseReport(database, seasonId, granularity) : Promise.resolve(null),
     ]);
+    // Superseded — the season was switched, or the screen left — while these
+    // three reducers were running over the local database.
+    if (ticket !== runId.current) {
+      return;
+    }
     setComparison(cmp);
     setConsumption(cons);
     setIncomeExpense(ie);
     setLoading(false);
   }, [seasonId, granularity]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  /**
+   * Reloaded on focus, not once on mount.
+   *
+   * This screen is a tab, so it stays mounted after the first visit. Recording
+   * an expense or a diary entry in another tab and coming back here showed
+   * charts drawn from data that no longer existed, and nothing on screen said
+   * so — the numbers simply disagreed with the Thu chi tab.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      return () => {
+        runId.current += 1;
+      };
+    }, [load]),
+  );
 
   // Chart-kit renders every label, so a 90-day season would produce an
   // unreadable smear. Thin the labels, never the data.

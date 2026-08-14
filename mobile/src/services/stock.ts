@@ -24,6 +24,28 @@ import {lineTotal, quantizeMoney, quantizeQuantity} from '../utils/numeric';
 // ─── Derived stock levels ───────────────────────────────────────────────────
 
 /**
+ * Reduce ledger rows to on-hand per supply.
+ *
+ * Split out from `stockLevels` so the same arithmetic serves both the one-shot
+ * read and the observable below. Two copies of this loop is exactly how the
+ * client and a screen start disagreeing about a number.
+ */
+export function levelsFrom(rows: StockTransaction[]): Map<string, number> {
+  const levels = new Map<string, number>();
+  for (const txn of rows) {
+    const delta = txn.txnType === TxnType.OUT ? -txn.quantity : txn.quantity;
+    levels.set(txn.supplyId, (levels.get(txn.supplyId) ?? 0) + delta);
+  }
+
+  // Quantise once at the end, not per addition — rounding each step would
+  // drift, and the server sums in Decimal then rounds once too.
+  for (const [id, total] of levels) {
+    levels.set(id, quantizeQuantity(total));
+  }
+  return levels;
+}
+
+/**
  * On-hand quantity for many supplies, from ONE query.
  *
  * Batched deliberately: computing this per row would turn a 40-item inventory
@@ -47,18 +69,23 @@ export async function stockLevels(
     .query(...conditions)
     .fetch();
 
-  const levels = new Map<string, number>();
-  for (const txn of rows) {
-    const delta = txn.txnType === TxnType.OUT ? -txn.quantity : txn.quantity;
-    levels.set(txn.supplyId, (levels.get(txn.supplyId) ?? 0) + delta);
-  }
+  return levelsFrom(rows);
+}
 
-  // Quantise once at the end, not per addition — rounding each step would
-  // drift, and the server sums in Decimal then rounds once too.
-  for (const [id, total] of levels) {
-    levels.set(id, quantizeQuantity(total));
-  }
-  return levels;
+/**
+ * The ledger as an observable, for screens that display on-hand.
+ *
+ * Such a screen must react to `stock_transactions`, NOT to `supplies`:
+ * recording a purchase appends a ledger row and leaves the catalogue entry
+ * untouched, so a query observing the supplies table never fires and the
+ * number on screen goes stale without anything looking wrong.
+ */
+export function observeLedger(database: Database, supplyId?: string) {
+  const conditions = supplyId ? [Q.where('supply_id', supplyId)] : [];
+  return database
+    .get<StockTransaction>('stock_transactions')
+    .query(...conditions)
+    .observe();
 }
 
 export async function stockLevel(database: Database, supplyId: string): Promise<number> {

@@ -14,7 +14,7 @@ import SyncStatusBar from '../../components/SyncStatusBar';
 import {database} from '../../db';
 import {SUPPLY_CATEGORY_LABELS, SupplyCategory} from '../../db/enums';
 import type {Supply} from '../../db/models';
-import {isLowStock, stockLevels} from '../../services/stock';
+import {isLowStock, levelsFrom, observeLedger} from '../../services/stock';
 import {observeSupplies} from '../../services/supplies';
 import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
 import {formatMoney, formatQuantity} from '../../utils/numeric';
@@ -102,17 +102,14 @@ export function SupplyListScreen({
   const [category, setCategory] = useState<SupplyCategory | null>(null);
   const [lowOnly, setLowOnly] = useState(false);
 
+  // Subscribed to the LEDGER, not to `supplies`. Recording a purchase writes a
+  // stock_transactions row and never touches the catalogue entry, so keying
+  // this off the supplies list left the on-hand number — and the "sắp hết"
+  // badge derived from it — stale until the tab was rebuilt.
   useEffect(() => {
-    let cancelled = false;
-    stockLevels(database).then(next => {
-      if (!cancelled) {
-        setLevels(next);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [supplies]);
+    const sub = observeLedger(database).subscribe(rows => setLevels(levelsFrom(rows)));
+    return () => sub.unsubscribe();
+  }, []);
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();

@@ -13,7 +13,7 @@
  * what is happening.
  */
 
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {ActivityIndicator, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 
 import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../theme';
@@ -48,8 +48,24 @@ export default function SyncStatusBar({pollMs = 5_000, onRejections}: SyncStatus
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  /**
+   * This bar sits on three list screens and polls every five seconds, so a
+   * count query is almost always in flight when the farmer navigates away. A
+   * sync round-trip outlives the screen by much longer still.
+   */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const refresh = useCallback(async () => {
     const [count, last] = await Promise.all([pendingChangeCount(), getLastSyncAt()]);
+    if (!mounted.current) {
+      return;
+    }
     setPending(count);
     setLastSync(last);
   }, []);
@@ -65,6 +81,11 @@ export default function SyncStatusBar({pollMs = 5_000, onRejections}: SyncStatus
     setMessage(null);
     try {
       const result = await sync();
+      // The sync itself still ran to completion and its records are committed;
+      // only the reporting is dropped, because the screen is gone.
+      if (!mounted.current) {
+        return;
+      }
       if (result.ok) {
         setMessage(
           result.pushed > 0 ? `Đã gửi ${result.pushed} thay đổi` : 'Đã cập nhật',
@@ -78,8 +99,10 @@ export default function SyncStatusBar({pollMs = 5_000, onRejections}: SyncStatus
         onRejections?.(result.rejected);
       }
     } finally {
-      setBusy(false);
-      await refresh();
+      if (mounted.current) {
+        setBusy(false);
+        await refresh();
+      }
     }
   }, [refresh, onRejections]);
 

@@ -12,7 +12,13 @@ import {Database} from '@nozbe/watermelondb';
 import {SupplyCategory} from '../../db/enums';
 import type {Supply} from '../../db/models';
 import {ValidationError} from '../seasons';
-import {recordStockIn, stockLevel} from '../stock';
+import {
+  levelsFrom,
+  observeLedger,
+  recordStockIn,
+  recordStockOut,
+  stockLevel,
+} from '../stock';
 import {
   archiveSupply,
   createSupply,
@@ -204,5 +210,61 @@ describe('Xoá và lưu trữ', () => {
 
     const fresh = await db.get<Supply>('supplies').find(supply.id);
     expect(fresh.isArchived).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Sổ cái quan sát được
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hồi quy cho một lỗi âm thầm: màn hình kho từng tính tồn kho trong một effect
+ * phụ thuộc danh sách `supplies`. Ghi phiếu nhập chỉ thêm dòng vào
+ * `stock_transactions` và KHÔNG chạm vào bảng `supplies`, nên effect không
+ * chạy lại và con số tồn kho đứng yên — không có gì trên màn hình cho thấy nó
+ * đã cũ. Điều bắt buộc phải đúng: nguồn phát tín hiệu là sổ cái.
+ */
+describe('observeLedger', () => {
+  /** WatermelonDB chạy lại truy vấn bất đồng bộ sau khi ghi. */
+  const flush = () =>
+    new Promise<void>(resolve => {
+      setTimeout(() => resolve(), 0);
+    });
+
+  it('phát tín hiệu lại sau mỗi giao dịch kho', async () => {
+    const supply = await createSupply(db, urea());
+    const seen: number[] = [];
+    const sub = observeLedger(db).subscribe(rows =>
+      seen.push(levelsFrom(rows).get(supply.id) ?? 0),
+    );
+    await flush();
+
+    await recordStockIn(db, {supplyId: supply.id, quantity: 50});
+    await flush();
+    await recordStockOut(db, {supplyId: supply.id, quantity: 20});
+    await flush();
+
+    sub.unsubscribe();
+
+    expect(seen[0]).toBe(0);
+    expect(seen[seen.length - 1]).toBe(30);
+    expect(seen.length).toBeGreaterThan(1);
+  });
+
+  it('lọc theo vật tư thì không kéo về sổ cái của vật tư khác', async () => {
+    const urê = await createSupply(db, urea());
+    const kali = await createSupply(db, {...urea(), name: 'Kali Clorua'});
+
+    await recordStockIn(db, {supplyId: urê.id, quantity: 50});
+    await recordStockIn(db, {supplyId: kali.id, quantity: 8});
+
+    let rows = 0;
+    const sub = observeLedger(db, urê.id).subscribe(found => {
+      rows = found.length;
+    });
+    await flush();
+    sub.unsubscribe();
+
+    expect(rows).toBe(1);
   });
 });

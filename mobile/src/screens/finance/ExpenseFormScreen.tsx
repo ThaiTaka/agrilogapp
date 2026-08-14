@@ -86,8 +86,11 @@ export default function ExpenseFormScreen({
   const [category, setCategory] = useState<ExpenseCategory>(
     expense?.category ?? ExpenseCategory.LABOR,
   );
+  // `!= null`, not a truthiness test: a 0 ₫ expense is a real record (a gift, a
+  // waived fee) and opened with the amount field blank, which then failed to
+  // save because a blank amount is not a number.
   const [amountText, setAmountText] = useState(
-    expense?.amount ? String(expense.amount) : '',
+    expense?.amount != null ? String(expense.amount) : '',
   );
   const [expenseDate, setExpenseDate] = useState(expense?.expenseDate ?? new Date());
   const [description, setDescription] = useState(expense?.description ?? '');

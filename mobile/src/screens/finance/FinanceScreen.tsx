@@ -180,7 +180,12 @@ export default function FinanceScreen({
   useEffect(() => {
     const sub = observeSeasons(database).subscribe(rows => {
       setSeasons(rows);
-      setSeasonId(current => current ?? rows[0]?.id ?? null);
+      // Fall back to the first season when the selected one is deleted —
+      // keeping the dangling id showed an empty ledger under a season picker
+      // with nothing selected, and no tap could recover it.
+      setSeasonId(current =>
+        current && rows.some(s => s.id === current) ? current : (rows[0]?.id ?? null),
+      );
     });
     return () => sub.unsubscribe();
   }, []);

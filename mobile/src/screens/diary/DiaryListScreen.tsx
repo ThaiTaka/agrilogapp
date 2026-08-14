@@ -8,12 +8,13 @@
 
 import {Q} from '@nozbe/watermelondb';
 import {withObservables} from '@nozbe/watermelondb/react';
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {FlatList, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 
 import {database} from '../../db';
 import {WEATHER_LABELS, WORK_TYPE_LABELS, WorkType} from '../../db/enums';
-import type {DiaryEntry, Season, StockTransaction} from '../../db/models';
+import type {DiaryEntry, Season, StockTransaction, Supply} from '../../db/models';
+import {observeSupplies} from '../../services/supplies';
 import {colors, radius, spacing, typography} from '../../theme';
 import {formatDate} from '../../utils/date';
 import {formatMoney, formatQuantity} from '../../utils/numeric';
@@ -82,61 +83,48 @@ function EntryCard({
 interface Props {
   season: Season;
   entries: DiaryEntry[];
+  usageTxns: StockTransaction[];
+  supplies: Supply[];
   onSelectEntry?: (entry: DiaryEntry) => void;
   onCreateEntry?: () => void;
 }
 
-export function DiaryListScreen({season, entries, onSelectEntry, onCreateEntry}: Props) {
+export function DiaryListScreen({
+  season,
+  entries,
+  usageTxns,
+  supplies,
+  onSelectEntry,
+  onCreateEntry,
+}: Props) {
   const [filter, setFilter] = useState<WorkType | null>(null);
-  const [usages, setUsages] = useState<Map<string, UsageSummary>>(new Map());
 
-  // Consumption is loaded for the whole page in one pass rather than per row:
-  // 50 entries would otherwise be 50 round-trips to SQLite and the list would
-  // stutter on a low-end phone.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (entries.length === 0) {
-        setUsages(new Map());
-        return;
-      }
-      const txns = await database
-        .get<StockTransaction>('stock_transactions')
-        .query(Q.where('diary_entry_id', Q.oneOf(entries.map(e => e.id))))
-        .fetch();
+  // Grouped from observed rows rather than fetched in an effect. Editing an
+  // entry's supply usage writes to stock_transactions and leaves the diary
+  // row's observed columns alone, so an effect keyed on `entries` never re-ran
+  // and the totals under each card silently kept the pre-edit numbers.
+  const usages = useMemo(() => {
+    const supplyById = new Map(supplies.map(s => [s.id, s]));
+    const grouped = new Map<string, UsageSummary>();
 
-      const supplyIds = [...new Set(txns.map(t => t.supplyId))];
-      const supplies = await database
-        .get('supplies')
-        .query(Q.where('id', Q.oneOf(supplyIds)))
-        .fetch();
-      const supplyById = new Map(
-        supplies.map(s => [s.id, s as unknown as {name: string; unit: string}]),
-      );
-
-      const grouped = new Map<string, UsageSummary>();
-      for (const txn of txns) {
-        if (!txn.diaryEntryId) {
-          continue;
-        }
-        const entryUsage = grouped.get(txn.diaryEntryId) ?? {cost: 0, lines: []};
-        const supply = supplyById.get(txn.supplyId);
-        entryUsage.cost += txn.totalCost;
-        entryUsage.lines.push({
-          name: supply?.name ?? 'Vật tư',
-          quantity: txn.quantity,
-          unit: supply?.unit ?? '',
-        });
-        grouped.set(txn.diaryEntryId, entryUsage);
+    for (const txn of usageTxns) {
+      // Standalone purchases also carry a season_id; only consumption belongs
+      // under a diary card.
+      if (!txn.diaryEntryId) {
+        continue;
       }
-      if (!cancelled) {
-        setUsages(grouped);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [entries]);
+      const entryUsage = grouped.get(txn.diaryEntryId) ?? {cost: 0, lines: []};
+      const supply = supplyById.get(txn.supplyId);
+      entryUsage.cost += txn.totalCost;
+      entryUsage.lines.push({
+        name: supply?.name ?? 'Vật tư',
+        quantity: txn.quantity,
+        unit: supply?.unit ?? '',
+      });
+      grouped.set(txn.diaryEntryId, entryUsage);
+    }
+    return grouped;
+  }, [usageTxns, supplies]);
 
   const visible = filter ? entries.filter(e => e.workType === filter) : entries;
   const presentTypes = [...new Set(entries.map(e => e.workType))];
@@ -222,6 +210,16 @@ const enhance = withObservables(['seasonId'], ({seasonId}: {seasonId: string}) =
     .get<DiaryEntry>('diary_entries')
     .query(Q.where('season_id', seasonId), Q.sortBy('entry_date', Q.desc))
     .observeWithColumns(['work_type', 'entry_date', 'title', 'note', 'weather']),
+  // One observed query for the season's whole ledger, not one per row: 50
+  // entries would otherwise be 50 round-trips to SQLite and the list would
+  // stutter on a low-end phone.
+  usageTxns: database
+    .get<StockTransaction>('stock_transactions')
+    .query(Q.where('season_id', seasonId))
+    .observe(),
+  // Archived supplies included deliberately: last season's entries still refer
+  // to them, and dropping them would render "Vật tư" where a name belongs.
+  supplies: observeSupplies(database, true),
 }));
 
 export default enhance(DiaryListScreen);
