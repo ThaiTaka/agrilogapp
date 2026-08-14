@@ -9,9 +9,6 @@
 import React, {useCallback, useState} from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +17,7 @@ import {
 } from 'react-native';
 
 import DateStepper from '../../components/DateStepper';
+import FormScaffold from '../../components/FormScaffold';
 import {database} from '../../db';
 import {AREA_UNITS, SEASON_STATUS_LABELS, SeasonStatus} from '../../db/enums';
 import type {Season} from '../../db/models';
@@ -156,10 +154,7 @@ export default function SeasonFormScreen({
   }, [season, onDeleted]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <Text style={styles.label}>Tên mùa vụ *</Text>
         <TextInput
           style={styles.input}
@@ -286,13 +281,11 @@ export default function SeasonFormScreen({
             <Text style={styles.dangerButtonText}>Xoá mùa vụ</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {padding: spacing.md, paddingBottom: spacing.xl},
   label: {...typography.label, color: colors.text, marginTop: spacing.md, marginBottom: spacing.xs},
   input: {

@@ -10,9 +10,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +18,7 @@ import {
 } from 'react-native';
 
 import DateStepper from '../../components/DateStepper';
+import FormScaffold from '../../components/FormScaffold';
 import {database} from '../../db';
 import {REVENUE_UNITS} from '../../db/enums';
 import type {Revenue} from '../../db/models';
@@ -148,10 +146,7 @@ export default function RevenueFormScreen({
   const overridden = derived !== null && amount !== null && amount !== derived;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <Text style={styles.label}>Sản lượng bán</Text>
         <View style={styles.row}>
           <TextInput
@@ -251,13 +246,11 @@ export default function RevenueFormScreen({
             <Text style={styles.dangerButtonText}>Xoá khoản thu</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {padding: spacing.md, paddingBottom: spacing.xl},
   label: {
     ...typography.label,

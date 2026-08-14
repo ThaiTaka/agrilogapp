@@ -11,9 +11,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import FormScaffold from '../../components/FormScaffold';
 import {database} from '../../db';
 import {SUPPLY_CATEGORY_LABELS, SUPPLY_UNITS, SupplyCategory} from '../../db/enums';
 import type {Supply} from '../../db/models';
@@ -154,10 +152,7 @@ export default function SupplyFormScreen({
   const hasHistory = (movements ?? 0) > 0;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <Text style={styles.label}>Tên vật tư *</Text>
         <TextInput
           style={styles.input}
@@ -275,13 +270,11 @@ export default function SupplyFormScreen({
             )}
           </>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {padding: spacing.md, paddingBottom: spacing.xl},
   label: {
     ...typography.label,

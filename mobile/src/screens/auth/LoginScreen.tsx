@@ -1,9 +1,6 @@
 import React, {useState} from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +8,7 @@ import {
   View,
 } from 'react-native';
 
+import FormScaffold from '../../components/FormScaffold';
 import {useAuth} from '../../services/auth';
 import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
 
@@ -42,10 +40,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <View style={styles.header}>
           <Text style={styles.logo}>🌾</Text>
           <Text style={styles.title}>AgriLog</Text>
@@ -118,13 +113,11 @@ export default function LoginScreen() {
             không có mạng.
           </Text>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {flexGrow: 1, justifyContent: 'center', padding: spacing.lg},
   header: {alignItems: 'center', marginBottom: spacing.xl},
   logo: {fontSize: 56},

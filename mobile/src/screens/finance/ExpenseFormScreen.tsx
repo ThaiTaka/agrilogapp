@@ -10,8 +10,6 @@
 import React, {useCallback, useState} from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +19,7 @@ import {
 } from 'react-native';
 
 import DateStepper from '../../components/DateStepper';
+import FormScaffold from '../../components/FormScaffold';
 import {database} from '../../db';
 import {EXPENSE_CATEGORY_LABELS, ExpenseCategory} from '../../db/enums';
 import type {Expense} from '../../db/models';
@@ -155,10 +154,7 @@ export default function ExpenseFormScreen({
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <Text style={styles.label}>Số tiền (₫) *</Text>
         <TextInput
           style={[styles.input, styles.amountInput]}
@@ -228,13 +224,11 @@ export default function ExpenseFormScreen({
             <Text style={styles.dangerButtonText}>Xoá khoản chi</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {padding: spacing.md, paddingBottom: spacing.xl},
   label: {
     ...typography.label,

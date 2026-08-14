@@ -11,9 +11,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,6 +19,7 @@ import {
 } from 'react-native';
 
 import DateStepper from '../../components/DateStepper';
+import FormScaffold from '../../components/FormScaffold';
 import SupplyUsageEditor, {type UsageRow} from '../../components/SupplyUsageEditor';
 import {database} from '../../db';
 import {
@@ -199,10 +197,7 @@ export default function DiaryFormScreen({
   }, [entry, existingUsages.length, onDeleted]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <Text style={styles.label}>Loại công việc *</Text>
         <View style={styles.chips}>
           {WORK_TYPES.map(value => (
@@ -294,13 +289,11 @@ export default function DiaryFormScreen({
             <Text style={styles.dangerButtonText}>Xoá nhật ký</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {padding: spacing.md, paddingBottom: spacing.xl},
   label: {
     ...typography.label,

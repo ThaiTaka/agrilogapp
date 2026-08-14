@@ -13,9 +13,6 @@
 
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,6 +21,7 @@ import {
 } from 'react-native';
 
 import DateStepper from '../../components/DateStepper';
+import FormScaffold from '../../components/FormScaffold';
 import {database} from '../../db';
 import {TxnType} from '../../db/enums';
 import type {Season, StockTransaction, Supply} from '../../db/models';
@@ -153,10 +151,7 @@ export default function StockMovementScreen({
   }, [canSubmit, quantity, mode, supply.id, unitCost, seasonId, txnDate, note, onDone]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <FormScaffold contentContainerStyle={styles.container}>
         <View style={styles.header}>
           <Text style={styles.supplyName}>{supply.name}</Text>
           <Text style={styles.onHand}>
@@ -305,13 +300,11 @@ export default function StockMovementScreen({
             ))}
           </View>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </FormScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: colors.background},
   container: {padding: spacing.md, paddingBottom: spacing.xl},
 
   header: {
