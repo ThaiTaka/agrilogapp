@@ -183,22 +183,30 @@ Dùng **App Router** (chuẩn hiện tại của Next.js, không dùng Pages Rou
 
 ## 2.2 Bước 2 — Cấu trúc thư mục & API client
 
+> ⚠️ **Hai chi tiết trong bản kế hoạch gốc đã sai với phiên bản thực tế cài đặt** (Next.js 16.3.1) — đã sửa khi thực thi, ghi lại ở đây để không ai làm theo bản cũ:
+>
+> 1. **`middleware.ts` → `src/proxy.ts`.** Next.js 16 đổi tên Middleware thành Proxy. File `middleware.ts` viết theo thói quen cũ **không chạy và cũng không báo lỗi** — nó chỉ im lặng không bảo vệ gì cả.
+> 2. **`NEXT_PUBLIC_API_BASE_URL` → `API_BASE_URL`.** Tiền tố `NEXT_PUBLIC_` nhúng biến vào bundle gửi cho trình duyệt. Vì trình duyệt không bao giờ gọi thẳng FastAPI (mọi request đi qua máy chủ Next.js), biến này phải là biến chỉ-máy-chủ.
+
 ```
 web/src/
 ├── app/
-│   ├── login/page.tsx
-│   ├── (dashboard)/
-│   │   ├── layout.tsx           # layout chung có sidebar, guard đăng nhập
-│   │   ├── page.tsx              # Dashboard tổng quan
-│   │   └── users/page.tsx        # User Management
-│   └── api/auth/route.ts         # route nội bộ Next.js, xem Bước 3
+│   ├── layout.tsx                 # phông Be Vietnam Pro, lang="vi", noindex
+│   ├── page.tsx                   # trang tạm sau đăng nhập (Bước 4 sẽ thay)
+│   ├── login/
+│   │   ├── page.tsx               # Server Component, lọc ?next=
+│   │   └── LoginForm.tsx          # Client Component
+│   └── api/auth/
+│       ├── login/route.ts         # cầu nối: FastAPI → cookie httpOnly
+│       └── logout/route.ts        # thu hồi refresh token rồi xoá cookie
 ├── lib/
-│   ├── apiClient.ts               # fetch wrapper trỏ tới FastAPI (NEXT_PUBLIC_API_BASE_URL)
-│   └── auth.ts
-└── middleware.ts                  # chặn truy cập /dashboard, /users khi chưa đăng nhập
+│   ├── api.ts                     # fetch wrapper, đánh dấu `server-only`
+│   ├── session.ts                 # cookie + requireAdmin() (tầng kiểm quyền thật)
+│   └── redirect.ts                # safeNextPath(), chống open redirect
+└── proxy.ts                       # chuyển hướng lạc quan (KHÔNG phải ranh giới bảo mật)
 ```
 
-`web/.env.local` chứa `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` — **không hard-code URL trong code**, đã tự động được `.gitignore` gốc chặn (pattern `.env*` không neo đường dẫn).
+`web/.env.local` chứa `API_BASE_URL=http://localhost:8000` — **không hard-code URL trong code**. Kèm `web/.env.example` để người sau biết cần cấu hình gì; đã phải thêm `!.env.example` vào `web/.gitignore` vì mẫu `.env*` do create-next-app sinh ra chặn luôn cả file mẫu.
 
 ## 2.3 Bước 3 — Màn hình Login
 
