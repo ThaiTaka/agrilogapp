@@ -6,7 +6,7 @@
  * which is the whole promise of the app.
  */
 
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 
+import DateStepper from '../../components/DateStepper';
 import {database} from '../../db';
 import {AREA_UNITS, SEASON_STATUS_LABELS, SeasonStatus} from '../../db/enums';
 import type {Season} from '../../db/models';
@@ -29,7 +30,7 @@ import {
   ValidationError,
 } from '../../services/seasons';
 import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
-import {formatDate} from '../../utils/date';
+import {startOfLocalDay} from '../../utils/date';
 import {parseNumberInput} from '../../utils/numeric';
 
 const STATUSES: SeasonStatus[] = [
@@ -65,12 +66,21 @@ export default function SeasonFormScreen({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Dates are display-only for now; a picker lands with the diary form (#22),
-  // which needs the same component.
-  const startDate = useMemo(() => season?.startDate ?? new Date(), [season]);
-  const endDate = season?.endDate ?? null;
+  // Snapped on the way in so an untouched start date compares cleanly against
+  // an end date the farmer picks — DateStepper only snaps what it is used on.
+  const [startDate, setStartDate] = useState<Date>(
+    startOfLocalDay(season?.startDate ?? new Date()),
+  );
+  const [endDate, setEndDate] = useState<Date | null>(season?.endDate ?? null);
 
-  const canSave = name.trim().length > 0 && cropType.trim().length > 0 && !busy;
+  // `maxToday` is off for both: unlike a diary entry, which records what
+  // happened, a season is routinely created before it starts and given a
+  // planned harvest date.
+  const endBeforeStart =
+    endDate !== null && endDate.getTime() < startDate.getTime();
+
+  const canSave =
+    name.trim().length > 0 && cropType.trim().length > 0 && !endBeforeStart && !busy;
 
   const onSave = useCallback(async () => {
     if (!canSave) {
@@ -207,11 +217,43 @@ export default function SeasonFormScreen({
           ))}
         </View>
 
-        <Text style={styles.label}>Thời gian</Text>
-        <Text style={styles.readonly}>
-          Bắt đầu {formatDate(startDate)}
-          {endDate ? ` · Kết thúc ${formatDate(endDate)}` : ' · chưa kết thúc'}
-        </Text>
+        <Text style={styles.label}>Ngày bắt đầu</Text>
+        <DateStepper value={startDate} onChange={setStartDate} maxToday={false} />
+
+        <Text style={styles.label}>Ngày kết thúc</Text>
+        <View style={styles.chips}>
+          <TouchableOpacity
+            style={[styles.chip, endDate === null && styles.chipActive]}
+            onPress={() => setEndDate(null)}>
+            <Text
+              style={[styles.chipText, endDate === null && styles.chipTextActive]}>
+              Chưa kết thúc
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, endDate !== null && styles.chipActive]}
+            // Seeded from the start date, not from today: a season created in
+            // advance would otherwise open its end picker on a date before it
+            // begins.
+            onPress={() => setEndDate(current => current ?? startDate)}>
+            <Text
+              style={[styles.chipText, endDate !== null && styles.chipTextActive]}>
+              Chọn ngày
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {endDate !== null && (
+          <View style={styles.endPicker}>
+            <DateStepper value={endDate} onChange={setEndDate} maxToday={false} />
+          </View>
+        )}
+
+        {endBeforeStart && (
+          <Text style={styles.hintInline}>
+            Ngày kết thúc đang trước ngày bắt đầu — sửa lại để lưu được.
+          </Text>
+        )}
 
         <Text style={styles.label}>Ghi chú</Text>
         <TextInput
@@ -266,7 +308,9 @@ const styles = StyleSheet.create({
   multiline: {minHeight: 88, textAlignVertical: 'top', paddingTop: spacing.sm},
   row: {flexDirection: 'row', alignItems: 'center'},
   rowInput: {flex: 1, marginRight: spacing.sm},
-  readonly: {...typography.body, color: colors.textSecondary},
+  endPicker: {marginTop: spacing.xs},
+  // Secondary, not danger: it says what to do next, it does not scold.
+  hintInline: {...typography.caption, color: colors.textSecondary, marginTop: spacing.xs},
 
   chips: {flexDirection: 'row', flexWrap: 'wrap', flex: 1},
   chip: {

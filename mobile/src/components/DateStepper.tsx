@@ -18,21 +18,13 @@ import React from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 
 import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../theme';
-import {formatDate, localDayIndex, MS_PER_DAY} from '../utils/date';
+import {formatDate, localDayIndex, MS_PER_DAY, startOfLocalDay} from '../utils/date';
 
 export interface DateStepperProps {
   value: Date;
   onChange: (value: Date) => void;
   /** Refuse dates after today. A diary records what happened. */
   maxToday?: boolean;
-}
-
-function startOfLocalDay(date: Date): Date {
-  // Snap to noon UTC rather than midnight: it keeps the value comfortably
-  // inside the same local day whichever direction the UTC+7 offset is
-  // applied, so a stored entry never drifts across a date boundary.
-  const day = localDayIndex(date.getTime());
-  return new Date(day * MS_PER_DAY + 12 * 3600 * 1000);
 }
 
 export default function DateStepper({value, onChange, maxToday = true}: DateStepperProps) {

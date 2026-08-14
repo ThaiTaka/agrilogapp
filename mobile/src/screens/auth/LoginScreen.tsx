@@ -22,6 +22,11 @@ export default function LoginScreen() {
 
   const canSubmit = email.trim().length > 0 && password.length >= 8 && !busy;
 
+  // Shown only once they have started typing: the rule is already in the
+  // placeholder before that, and a requirement stated as an error against an
+  // untouched field reads as a complaint.
+  const showPasswordHint = password.length > 0 && password.length < 8;
+
   async function onSubmit() {
     if (!canSubmit) {
       return;
@@ -79,6 +84,16 @@ export default function LoginScreen() {
             onSubmitEditing={onSubmit}
           />
 
+          {/*
+            The button below dims until this rule is met. Without saying so,
+            the farmer is left tapping a dead control with nothing on screen
+            explaining what is wrong — the commonest way a login screen gets
+            abandoned.
+          */}
+          {showPasswordHint ? (
+            <Text style={styles.hintInline}>Mật khẩu cần ít nhất 8 ký tự</Text>
+          ) : null}
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TouchableOpacity
@@ -134,6 +149,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   error: {...typography.caption, color: colors.danger, marginTop: spacing.md},
+  // Secondary, not danger: this is guidance while typing, not a rejection.
+  hintInline: {...typography.caption, color: colors.textSecondary, marginTop: spacing.xs},
   button: {
     minHeight: MIN_TOUCH_TARGET,
     backgroundColor: colors.primary,

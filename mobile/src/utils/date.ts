@@ -40,6 +40,23 @@ export function dayIndexToDate(dayIndex: number): Date {
   return new Date(dayIndex * MS_PER_DAY);
 }
 
+/**
+ * Snap a moment to the local day it falls in.
+ *
+ * Noon UTC rather than midnight: it keeps the value comfortably inside the
+ * same local day whichever direction the UTC+7 offset is applied, so a stored
+ * date never drifts across a day boundary.
+ *
+ * Every date a user PICKS should go through this. Mixing a picked date with a
+ * raw `new Date()` makes two values on the same calendar day compare unequal —
+ * which is how "ngày kết thúc trước ngày bắt đầu" fires on a season created
+ * late in the evening and ended the same day.
+ */
+export function startOfLocalDay(value: Date | number): Date {
+  const ms = value instanceof Date ? value.getTime() : value;
+  return new Date(localDayIndex(ms) * MS_PER_DAY + 12 * 3600 * 1000);
+}
+
 /** Report bucket key, e.g. '2026-09'. */
 export function localMonthKey(ms: number): string {
   const d = new Date(ms + TZ_OFFSET_MS);
