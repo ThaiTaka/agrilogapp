@@ -19,3 +19,22 @@
 html {
   color-scheme: light;
 }
+
+/* Nền chuyển sắc rất nhẹ từ trắng ngả xanh xuống xám, cố định khi cuộn. Đủ để
+   các thẻ trắng có chiều sâu, nhạt tới mức không ảnh hưởng độ tương phản chữ. */
+body {
+  background-image: linear-gradient(180deg, #f2f8f3 0%, #f8fafc 38%);
+  background-attachment: fixed;
+}
+
+/* Tôn trọng thiết lập giảm chuyển động của hệ điều hành. Mọi transition thêm
+   vào ở đợt polish này đều là trang trí — không cái nào đáng để gây khó chịu
+   cho người nhạy cảm với chuyển động. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

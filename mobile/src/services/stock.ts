@@ -177,29 +177,38 @@ export async function recordStockTake(
   countedQuantity: number,
   note?: string,
 ): Promise<{transaction: StockTransaction | null; delta: number}> {
-  const current = await stockLevel(database, supplyId);
-  const counted = quantizeQuantity(countedQuantity);
-  const delta = quantizeQuantity(counted - current);
+  // Đọc sổ cái NẰM TRONG writer, không phải trước nó.
+  //
+  // Delta là hiệu giữa số đếm và số sổ sách, nên nó chỉ đúng nếu sổ sách không
+  // đổi giữa lúc đọc và lúc ghi. Đọc bên ngoài thì một lượt ghi chen vào giữa
+  // sẽ tạo ra một dòng điều chỉnh sai lệch — và sai lặng lẽ, vì bản ghi vẫn
+  // hợp lệ về mọi mặt hình thức. WatermelonDB tuần tự hoá các writer, nên đưa
+  // phép đọc vào trong là đủ để loại hẳn khe hở đó.
+  return database.write(async () => {
+    const current = await stockLevel(database, supplyId);
+    const counted = quantizeQuantity(countedQuantity);
+    const delta = quantizeQuantity(counted - current);
 
-  if (delta === 0) {
-    return {transaction: null, delta: 0};
-  }
+    if (delta === 0) {
+      return {transaction: null, delta: 0};
+    }
 
-  const transaction = await database.write(() =>
-    database.get<StockTransaction>('stock_transactions').create(txn => {
-      txn.supplyId = supplyId;
-      txn.seasonId = null;
-      txn.diaryEntryId = null;
-      txn.txnType = TxnType.ADJUST;
-      txn.quantity = delta; // signed
-      txn.unitCost = 0;
-      txn.totalCost = 0;
-      txn.txnDate = new Date();
-      txn.note = note ?? `Kiểm kê: ${current} → ${counted}`;
-    }),
-  );
+    const transaction = await database
+      .get<StockTransaction>('stock_transactions')
+      .create(txn => {
+        txn.supplyId = supplyId;
+        txn.seasonId = null;
+        txn.diaryEntryId = null;
+        txn.txnType = TxnType.ADJUST;
+        txn.quantity = delta; // signed
+        txn.unitCost = 0;
+        txn.totalCost = 0;
+        txn.txnDate = new Date();
+        txn.note = note ?? `Kiểm kê: ${current} → ${counted}`;
+      });
 
-  return {transaction, delta};
+    return {transaction, delta};
+  });
 }
 
 /**

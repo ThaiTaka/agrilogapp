@@ -16,7 +16,7 @@ import {SUPPLY_CATEGORY_LABELS, SupplyCategory} from '../../db/enums';
 import type {Supply} from '../../db/models';
 import {isLowStock, levelsFrom, observeLedger} from '../../services/stock';
 import {observeSupplies} from '../../services/supplies';
-import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
+import {colors, MIN_TOUCH_TARGET, radius, shadows, spacing, typography} from '../../theme';
 import {formatMoney, formatQuantity} from '../../utils/numeric';
 
 const CATEGORY_ICON: Record<SupplyCategory, string> = {
@@ -281,8 +281,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.ms,
     overflow: 'hidden',
+    ...shadows.card,
   },
   cardMain: {flexDirection: 'row', alignItems: 'center', padding: spacing.md},
   cardIcon: {fontSize: 28, marginRight: spacing.sm},
@@ -343,7 +344,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    ...shadows.floating,
   },
   fabText: {fontSize: 32, color: colors.textOnPrimary, lineHeight: 36},
 });

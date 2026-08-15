@@ -44,8 +44,8 @@ export default function UserActions({
         disabled={pending}
         className={
           isActive
-            ? "rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
-            : "rounded-lg border border-green-300 px-3 py-1.5 text-sm font-medium text-green-800 transition hover:bg-green-50 disabled:opacity-50"
+            ? "rounded-xl border border-red-200 bg-white px-3.5 py-1.5 text-sm font-medium text-red-700 shadow-sm transition duration-150 hover:border-red-300 hover:bg-red-50 hover:shadow-md active:scale-[0.97] disabled:opacity-50"
+            : "rounded-xl border border-green-300 bg-white px-3.5 py-1.5 text-sm font-medium text-green-800 shadow-sm transition duration-150 hover:bg-green-50 hover:shadow-md active:scale-[0.97] disabled:opacity-50"
         }
       >
         {pending ? "Đang lưu…" : isActive ? "Khoá" : "Mở khoá"}

@@ -236,15 +236,22 @@ Bảng danh sách user (email, household, trạng thái `is_active`, ngày tạo
 
 ## 3. Nợ kỹ thuật (cập nhật dần trong lúc thực thi)
 
-Phát hiện trong Bước 1 (14/08/2026), **không chặn Phase 2** — ghi lại để không trôi mất:
+Phát hiện trong Bước 1 (14/08/2026). Cập nhật lần cuối 15/08/2026.
 
-| # | Việc | Vì sao không sửa ngay |
+### Đã xử lý
+
+| # | Việc | Cách xử lý |
 |---|---|---|
-| M1 | `recordStockTake` đọc `stockLevel` **ngoài** writer rồi mới ghi bên trong. Về lý thuyết một lượt ghi chen vào giữa sẽ làm delta sai. | App một người dùng trên một máy, chưa có đường nào tạo ra ghi đồng thời. Sửa đúng cần đưa cả phép đọc vào writer — đụng `stock.ts`, vùng vừa vá 13/08. |
-| M2 | `LoginScreen` chỉ bật nút khi mật khẩu ≥ 8 ký tự, và **không nói lý do**. Tài khoản có mật khẩu cũ ngắn hơn sẽ thấy nút chết mà không hiểu tại sao. | Cần Thái quyết định: nới điều kiện, hay giữ và thêm dòng giải thích. |
-| M3 | `SeasonFormScreen` hiển thị ngày bắt đầu/kết thúc ở dạng chỉ đọc — chưa có bộ chọn ngày (đã ghi TODO trong code từ #20). `DateStepper` đã có sẵn và dùng được ở nhật ký. | Là tính năng thiếu, không phải lỗi. Ngày bắt đầu mặc định = hôm nay vẫn đúng cho phần lớn trường hợp. |
-| M4 | 132 test hiện có **đều là test service + schema**, không có test nào cho 12 màn hình. Đúng 4 lỗi sửa hôm nay đều nằm ở tầng màn hình và không test nào bắt được. | Thêm test màn hình là một khối việc riêng, nên tính thành hạng mục có kế hoạch chứ không chèn giữa Phase 1. |
-| M5 | Logcat báo `[🍉] JSI SQLiteAdapter not available… falling back to asynchronous operation` mỗi lần khởi động. `db/index.ts` đặt `jsi: true` kèm ghi chú rằng JSI là thứ giữ cho danh sách cuộn mượt trên máy yếu — nhưng thực tế đang chạy qua bridge bất đồng bộ, tức là **không** có lợi ích đó. | Chưa gây lỗi chức năng và không cảm nhận được với lượng dữ liệu test. Nhưng đây đúng là nhóm máy mà app nhắm tới, nên cần đo lại với vài trăm bản ghi trước khi kết luận bỏ qua được. Đụng vào cấu hình native — vùng vừa vá 13/08. |
+| M1 | `recordStockTake` đọc `stockLevel` **ngoài** writer rồi mới ghi bên trong — một lượt ghi chen vào giữa sẽ làm delta sai, và sai lặng lẽ vì bản ghi vẫn hợp lệ về hình thức. | ✅ 15/08 — đưa cả phép đọc vào trong `database.write()`. WatermelonDB tuần tự hoá writer nên khe hở biến mất hoàn toàn. 132 test vẫn xanh. |
+| M2 | `LoginScreen` chỉ bật nút khi mật khẩu ≥ 8 ký tự, và **không nói lý do**. | ✅ 14/08 — thêm dòng "Mật khẩu cần ít nhất 8 ký tự", chỉ hiện sau khi người dùng bắt đầu gõ. Giữ nguyên điều kiện bảo mật theo quyết định của Thái. |
+| M3 | `SeasonFormScreen` hiển thị ngày ở dạng chỉ đọc, chưa có bộ chọn ngày. | ✅ 14/08 — tái dùng `DateStepper` cho cả ngày bắt đầu và ngày kết thúc, kèm cảnh báo khi ngày kết thúc trước ngày bắt đầu. Lộ ra và sửa luôn một lỗi múi giờ: `startOfLocalDay` được tách lên `utils/date` để ngày người dùng CHỌN và ngày mặc định `new Date()` cùng hệ quy chiếu. |
+
+### Còn tồn
+
+| # | Việc | Vì sao chưa làm |
+|---|---|---|
+| M4 | 132 test hiện có **đều là test service + schema**, không có test nào cho 12 màn hình. Cả 4 lỗi tầng màn hình sửa ngày 14/08 lẫn lỗi bàn phím ngày 15/08 đều không test nào bắt được. | Thêm test màn hình là một khối việc riêng. Đáng làm trước khi mở rộng tính năng, nhưng chèn vội vào lúc này thì rủi ro cao hơn lợi ích — một bài test dựng ẩu cho `FormScaffold` (phải giả lập sự kiện bàn phím và `measureInWindow`) dễ thành test chập chờn, tệ hơn là không có. |
+| M5 | Logcat báo `[🍉] JSI SQLiteAdapter not available… falling back to asynchronous operation` mỗi lần khởi động. `db/index.ts` đặt `jsi: true` kèm ghi chú rằng JSI giữ cho danh sách cuộn mượt trên máy yếu — thực tế đang chạy qua bridge bất đồng bộ, tức **không** có lợi ích đó. | Thái quyết định **không đụng cấu hình native** để giữ dự án ổn định cho kỳ bảo vệ. Ghi lại để xử lý sau. Cần đo lại với vài trăm bản ghi trước khi kết luận. |
 
 **Ghi chú kiểm thử:** máy chủ có 2 tài khoản test do tôi tạo để chạy kịch bản UI — `uitest@agrilog-test.com` và `uitest2@agrilog-test.com`. Xoá được bất cứ lúc nào, không dính tới dữ liệu thật.
 

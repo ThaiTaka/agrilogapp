@@ -77,7 +77,7 @@ export default function LoginForm({ next }: { next?: string }) {
           }}
           disabled={busy}
           placeholder="quantri@example.com"
-          className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-green-600 focus:ring-2 focus:ring-green-600/20 disabled:bg-slate-50"
+          className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm outline-none transition duration-150 placeholder:text-slate-400 focus:border-green-600 focus:ring-2 focus:ring-green-600/20 disabled:bg-slate-50"
         />
       </div>
 
@@ -99,7 +99,7 @@ export default function LoginForm({ next }: { next?: string }) {
             setError(null);
           }}
           disabled={busy}
-          className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20 disabled:bg-slate-50"
+          className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm outline-none transition duration-150 focus:border-green-600 focus:ring-2 focus:ring-green-600/20 disabled:bg-slate-50"
         />
       </div>
 
@@ -115,7 +115,7 @@ export default function LoginForm({ next }: { next?: string }) {
       <button
         type="submit"
         disabled={!canSubmit}
-        className="w-full rounded-lg bg-green-700 px-4 py-2.5 font-semibold text-white transition hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-600/40 disabled:cursor-not-allowed disabled:bg-slate-300"
+        className="w-full rounded-xl bg-gradient-to-b from-green-600 to-green-700 px-4 py-2.5 font-semibold text-white shadow-sm transition duration-150 hover:from-green-700 hover:to-green-800 hover:shadow-md focus:ring-2 focus:ring-green-600/40 focus:outline-none active:scale-[0.99] disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
       >
         {busy ? "Đang đăng nhập…" : "Đăng nhập"}
       </button>

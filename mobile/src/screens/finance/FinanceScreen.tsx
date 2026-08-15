@@ -35,7 +35,7 @@ import {
   type FinanceSummary,
 } from '../../services/finance';
 import {observeSeasons} from '../../services/seasons';
-import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
+import {colors, MIN_TOUCH_TARGET, radius, shadows, spacing, typography} from '../../theme';
 import {formatDate} from '../../utils/date';
 import {formatMoney, formatQuantity} from '../../utils/numeric';
 
@@ -400,6 +400,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
+    ...shadows.card,
   },
   summaryRow: {flexDirection: 'row'},
   summaryCell: {flex: 1},
@@ -462,7 +463,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.ms,
+    ...shadows.card,
   },
   rowLeft: {flex: 1},
   rowTitle: {...typography.label, color: colors.text},
@@ -499,7 +501,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    ...shadows.floating,
   },
   fabText: {fontSize: 32, color: colors.textOnPrimary, lineHeight: 36},
 });

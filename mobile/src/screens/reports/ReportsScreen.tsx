@@ -37,7 +37,7 @@ import {
   type SupplyConsumptionReport,
 } from '../../services/reports';
 import {observeSeasons} from '../../services/seasons';
-import {colors, radius, spacing, typography} from '../../theme';
+import {colors, radius, shadows, spacing, typography} from '../../theme';
 import {formatMoney, formatMoneyShort} from '../../utils/numeric';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -431,7 +431,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.md,
+    marginBottom: spacing.ms,
+    ...shadows.card,
   },
   sectionTitle: {...typography.heading, color: colors.text},
   sectionSubtitle: {

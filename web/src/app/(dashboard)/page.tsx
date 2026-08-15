@@ -17,10 +17,10 @@ function StatCard({
   tone?: "default" | "warning";
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
+    <div className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/[0.02] transition duration-200 hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
+      <p className="text-sm font-medium text-slate-500">{label}</p>
       <p
-        className={`mt-1 text-3xl font-bold tabular-nums ${
+        className={`mt-1.5 text-3xl font-bold tabular-nums ${
           tone === "warning" && value > 0 ? "text-amber-600" : "text-slate-900"
         }`}
       >
@@ -39,8 +39,10 @@ export default async function OverviewPage() {
 
   return (
     <div className="px-6 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Tổng quan</h1>
+      <header className="mb-7">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          Tổng quan
+        </h1>
         <p className="mt-1 text-sm text-slate-500">
           Số liệu toàn hệ thống, đọc trực tiếp từ máy chủ.
         </p>
@@ -49,7 +51,7 @@ export default async function OverviewPage() {
       {data.maintenance_enabled ? (
         <p
           role="status"
-          className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+          className="mb-6 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-amber-100/50 px-4 py-3 text-sm font-medium text-amber-900 shadow-sm"
         >
           ⚠ Chế độ bảo trì đang BẬT — ứng dụng di động đang hiển thị thông báo
           bảo trì cho người dùng.

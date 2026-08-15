@@ -22,7 +22,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white sm:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white/80 shadow-sm backdrop-blur-sm sm:flex">
         <div className="border-b border-slate-200 px-5 py-5">
           <Link href="/" className="flex items-center gap-2">
             <span className="text-2xl" aria-hidden>

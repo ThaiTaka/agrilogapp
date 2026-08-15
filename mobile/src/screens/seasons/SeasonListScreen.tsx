@@ -16,7 +16,7 @@ import {database} from '../../db';
 import {SEASON_STATUS_LABELS, SeasonStatus} from '../../db/enums';
 import type {Season} from '../../db/models';
 import {observeSeasons} from '../../services/seasons';
-import {colors, MIN_TOUCH_TARGET, radius, spacing, typography} from '../../theme';
+import {colors, MIN_TOUCH_TARGET, radius, shadows, spacing, typography} from '../../theme';
 import {daysElapsed, formatDateRange} from '../../utils/date';
 import {formatQuantity} from '../../utils/numeric';
 
@@ -149,7 +149,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.ms,
+    ...shadows.card,
   },
   cardHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   cardTitle: {...typography.heading, color: colors.text, flex: 1, marginRight: spacing.sm},
@@ -194,7 +195,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    ...shadows.floating,
   },
   fabText: {fontSize: 32, color: colors.textOnPrimary, lineHeight: 36},
 });

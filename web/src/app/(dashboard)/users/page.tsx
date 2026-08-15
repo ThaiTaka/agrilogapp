@@ -67,13 +67,13 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
           defaultValue={search}
           placeholder="Tìm theo email, tên, nông hộ…"
           aria-label="Tìm tài khoản"
-          className="min-w-56 flex-1 rounded-lg border border-slate-300 px-3.5 py-2 text-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+          className="min-w-56 flex-1 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm shadow-sm outline-none transition duration-150 focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
         />
         <select
           name="status"
           defaultValue={filter}
           aria-label="Lọc theo trạng thái"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-green-600"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition duration-150 focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
         >
           <option value="all">Tất cả trạng thái</option>
           <option value="active">Đang hoạt động</option>
@@ -81,7 +81,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
         </select>
         <button
           type="submit"
-          className="rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-800"
+          className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition duration-150 hover:bg-green-800 hover:shadow-md focus:ring-2 focus:ring-green-600/40 focus:outline-none active:scale-[0.98]"
         >
           Lọc
         </button>
@@ -92,10 +92,10 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
         )}
       </form>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-sm ring-1 ring-slate-900/[0.02]">
         <table className="w-full min-w-3xl text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs tracking-wide text-slate-500 uppercase">
               <th className="px-4 py-3 font-medium">Tài khoản</th>
               <th className="px-4 py-3 font-medium">Nông hộ</th>
               <th className="px-4 py-3 font-medium">Trạng thái</th>
@@ -112,7 +112,10 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
               </tr>
             ) : (
               data.items.map((user) => (
-                <tr key={user.id} className="border-b border-slate-100 last:border-0">
+                <tr
+                  key={user.id}
+                  className="border-b border-slate-100 transition-colors duration-150 last:border-0 hover:bg-green-50/40"
+                >
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">
                       {user.full_name}
@@ -185,8 +188,8 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
             aria-disabled={!hasPrev}
             className={
               hasPrev
-                ? "rounded-lg border border-slate-300 px-3 py-1.5 transition hover:bg-slate-100"
-                : "pointer-events-none rounded-lg border border-slate-200 px-3 py-1.5 text-slate-300"
+                ? "rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 shadow-sm transition duration-150 hover:border-green-300 hover:bg-green-50 hover:text-green-800"
+                : "pointer-events-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-slate-300"
             }
           >
             Trước
@@ -196,8 +199,8 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
             aria-disabled={!hasNext}
             className={
               hasNext
-                ? "rounded-lg border border-slate-300 px-3 py-1.5 transition hover:bg-slate-100"
-                : "pointer-events-none rounded-lg border border-slate-200 px-3 py-1.5 text-slate-300"
+                ? "rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 shadow-sm transition duration-150 hover:border-green-300 hover:bg-green-50 hover:text-green-800"
+                : "pointer-events-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-slate-300"
             }
           >
             Sau

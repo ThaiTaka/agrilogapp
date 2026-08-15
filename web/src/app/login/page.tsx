@@ -23,21 +23,23 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const notice = typeof rawError === "string" ? ERRORS[rawError] : undefined;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
+    <main className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="text-5xl" aria-hidden>
+          <div className="text-5xl drop-shadow-sm" aria-hidden>
             🌾
           </div>
-          <h1 className="mt-3 text-2xl font-bold text-green-800">AgriLog</h1>
+          <h1 className="mt-3 bg-gradient-to-b from-green-700 to-green-900 bg-clip-text text-2xl font-bold text-transparent">
+            AgriLog
+          </h1>
           <p className="mt-1 text-sm text-slate-500">Trang quản trị hệ thống</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-green-900/[0.04] ring-1 ring-slate-900/[0.02]">
           {notice ? (
             <p
               role="alert"
-              className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800"
+              className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800"
             >
               {notice}
             </p>

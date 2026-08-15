@@ -15,7 +15,7 @@ import {database} from '../../db';
 import {WEATHER_LABELS, WORK_TYPE_LABELS, WorkType} from '../../db/enums';
 import type {DiaryEntry, Season, StockTransaction, Supply} from '../../db/models';
 import {observeSupplies} from '../../services/supplies';
-import {colors, radius, spacing, typography} from '../../theme';
+import {colors, radius, shadows, spacing, typography} from '../../theme';
 import {formatDate} from '../../utils/date';
 import {formatMoney, formatQuantity} from '../../utils/numeric';
 
@@ -266,7 +266,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.ms,
+    ...shadows.card,
   },
   cardHeader: {flexDirection: 'row', alignItems: 'center'},
   cardIcon: {fontSize: 28, marginRight: spacing.sm},
@@ -305,7 +306,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    ...shadows.floating,
   },
   fabText: {fontSize: 32, color: colors.textOnPrimary, lineHeight: 36},
 });
