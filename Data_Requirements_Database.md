@@ -404,7 +404,7 @@ Chú thích: **PK** khoá chính · **FK** khoá ngoại · **UK** duy nhất ·
 
 **Vì sao:** một bộ đếm được lưu phải bị thay đổi bởi cả máy chủ lẫn mọi thiết bị offline, và hai thiết bị cùng trừ vào một bộ đếm đã cache khi đang offline sẽ tạo ra một con số đơn giản là sai sau khi đồng bộ — mà không có cách nào phát hiện. Suy ra từ một sổ cái chỉ-thêm nghĩa là hai thiết bị đóng góp hai dòng giao dịch độc lập, cả hai đồng bộ sạch sẽ, và tổng đúng theo cấu trúc. Đây là quyết định mô hình hoá dữ liệu trung tâm của module vật tư. Cái giá là một phép `SUM` mỗi lần đọc, được §10 đánh index và §11 cache ở tầng giao diện.
 
-**`name_key`** là `name` đã qua `app.core.text.normalise_key` — chuẩn hoá NFC, cắt khoảng trắng, `casefold()`. Nó tồn tại vì **`lower()` của PostgreSQL hạ chữ theo collation của database**: với `C`, `lower('Đạm Urê Phú Mỹ')` trả về `'Đạm urê phú mỹ'` với chữ `Đ` nguyên vẹn, nên một index trên `lower(name)` vui vẻ chấp nhận cùng một vật tư hai lần. Hạ chữ trong Python rồi so sánh byte cho cùng kết quả trên mọi cụm bất kể nó được `initdb` thế nào. `name_key` là giá trị dẫn xuất, chỉ tồn tại phía máy chủ — không bao giờ đi trong payload đồng bộ. Phân tích đầy đủ: [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md).
+**`name_key`** là `name` đã qua `app.core.text.normalise_key` — chuẩn hoá NFC, cắt khoảng trắng, `casefold()`. Nó tồn tại vì **`lower()` của PostgreSQL hạ chữ theo collation của database**: với `C`, `lower('Đạm Urê Phú Mỹ')` trả về `'Đạm urê phú mỹ'` với chữ `Đ` nguyên vẹn, nên một index trên `lower(name)` vui vẻ chấp nhận cùng một vật tư hai lần. Hạ chữ trong Python rồi so sánh byte cho cùng kết quả trên mọi cụm bất kể nó được `initdb` thế nào. `name_key` là giá trị dẫn xuất, chỉ tồn tại phía máy chủ — không bao giờ đi trong payload đồng bộ. Phân tích đầy đủ: [Error_Postgres_Locale_Case_Folding.md](docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md).
 
 **Ràng buộc duy nhất:** `(household_id, name_key, unit) WHERE deleted_at IS NULL` — ngăn "Đạm Urê" bị tạo hai lần trên một thiết bị thành hai dòng tồn kho. Lưu ý nó *không* chống được phân vùng mạng (hai thiết bị cùng offline, cùng tạo, cùng push); §8.3 mô tả cách xử lý.
 
@@ -542,7 +542,7 @@ $$ LANGUAGE plpgsql;
 
 **Vì sao dùng trigger chứ không dùng `onupdate=` của SQLAlchemy:** script seed, một câu `UPDATE` gõ tay trong pgAdmin, và mọi công cụ quản trị tương lai đều đi vòng qua ORM. Bất kỳ lần ghi nào lọt khỏi ORM mà không đẩy con trỏ lên sẽ tạo ra một dòng dữ liệu vĩnh viễn vô hình với mọi thiết bị — loại lỗi đồng bộ tệ nhất, vì dữ liệu vẫn nằm trên máy chủ mà đơn giản là không bao giờ tới nơi. Ép trong database làm điều đó trở thành không thể biểu diễn được.
 
-**Vì sao `clock_timestamp()` chứ tuyệt đối không phải `now()`:** `now()` chính là `transaction_timestamp()` — mọi câu lệnh trong một transaction nhận thời điểm *transaction bắt đầu*. Sync push cố ý áp cả lô trong một transaction (§6.6), nên với `now()` mọi dòng trong một lô push dài sẽ bị đóng dấu một thời điểm có thể đã nằm sau con trỏ mà một lần pull khác đã lưu — và những dòng đó sẽ không bao giờ được gửi đi nữa. `clock_timestamp()` đóng dấu từng dòng đúng lúc nó được ghi. Đây là một lỗi thật, bắt được bằng test hồi quy trước khi có bất kỳ client nào; phân tích đầy đủ ở [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md).
+**Vì sao `clock_timestamp()` chứ tuyệt đối không phải `now()`:** `now()` chính là `transaction_timestamp()` — mọi câu lệnh trong một transaction nhận thời điểm *transaction bắt đầu*. Sync push cố ý áp cả lô trong một transaction (§6.6), nên với `now()` mọi dòng trong một lô push dài sẽ bị đóng dấu một thời điểm có thể đã nằm sau con trỏ mà một lần pull khác đã lưu — và những dòng đó sẽ không bao giờ được gửi đi nữa. `clock_timestamp()` đóng dấu từng dòng đúng lúc nó được ghi. Đây là một lỗi thật, bắt được bằng test hồi quy trước khi có bất kỳ client nào; phân tích đầy đủ ở [Error_Sync_Cursor_Transaction_Timestamp.md](docs/troubleshooting/Error_Sync_Cursor_Transaction_Timestamp.md).
 
 ### 6.2 Khối cột đồng bộ phía client
 
@@ -856,7 +856,7 @@ CREATE UNIQUE INDEX uq_expense_per_stock_txn ON expenses (stock_transaction_id)
     WHERE stock_transaction_id IS NOT NULL;
 
 -- name_key, KHÔNG phải lower(name): xem §5.5 và
--- Error_Postgres_Locale_Case_Folding.md
+-- docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md
 CREATE UNIQUE INDEX uq_supply_key_unit       ON supplies (household_id, name_key, unit)
     WHERE deleted_at IS NULL;
 

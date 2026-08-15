@@ -188,7 +188,7 @@ agrilogapp/
 | Git | 2.54.0 | |
 | JDK | 17 | đi kèm Android Studio |
 
-> **Lưu ý về Node 24:** phạm vi hỗ trợ của React Native đi chậm hơn nhịp phát hành của Node. Nếu `npx react-native` báo lỗi engine hoặc `ERR_REQUIRE_ESM`, hãy cài thêm Node 20 LTS qua `nvm-windows` và ghim riêng cho thư mục `mobile/`. Sự cố (nếu xảy ra) sẽ được ghi vào `Error_NodeVersion.md` theo quy trình xử lý lỗi của dự án.
+> **Lưu ý về Node 24:** phạm vi hỗ trợ của React Native đi chậm hơn nhịp phát hành của Node. Nếu `npx react-native` báo lỗi engine hoặc `ERR_REQUIRE_ESM`, hãy cài thêm Node 20 LTS qua `nvm-windows` và ghim riêng cho thư mục `mobile/`. Sự cố (nếu xảy ra) sẽ được ghi vào `docs/troubleshooting/Error_NodeVersion.md` theo quy trình xử lý lỗi của dự án.
 
 ---
 
@@ -203,7 +203,7 @@ Get-Service postgresql-x64-18 | Select-Object Status,StartType
 Get-NetTCPConnection -LocalPort 5432 -State Listen    # kỳ vọng có 2 dòng
 ```
 
-Nếu không có gì, xem **[Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md)**.
+Nếu không có gì, xem **[Error_PostgreSQL_Service_Missing.md](docs/troubleshooting/Error_PostgreSQL_Service_Missing.md)**.
 
 ### 7.2 Tạo môi trường ảo và cài phụ thuộc
 
@@ -499,13 +499,13 @@ CI chạy lint + test cho mỗi push và PR ở cả hai codebase (Issue #18) v�
 |---|---|---|
 | [Data_Requirements_Database.md](Data_Requirements_Database.md) | **Mô hình dữ liệu gốc** — ERD, đặc tả bảng, metadata đồng bộ, song song PG ↔ WatermelonDB, bất biến, kế hoạch index | #6, #7, #8, #9 |
 | [AgriLog_GitHub_Issues_and_Kanban.md](AgriLog_GitHub_Issues_and_Kanban.md) | 55 issue, 11 mốc, hướng dẫn dựng bảng Kanban | #1 |
-| [Error_PostgreSQL_Service_Missing.md](Error_PostgreSQL_Service_Missing.md) | Service PostgreSQL 18 chưa đăng ký — chẩn đoán và cách sửa | #13 |
-| [Error_Sync_Cursor_Transaction_Timestamp.md](Error_Sync_Cursor_Transaction_Timestamp.md) | `now()` và `clock_timestamp()` — lỗi mất dữ liệu âm thầm ở con trỏ pull | #9, #32 |
-| [Error_Postgres_Locale_Case_Folding.md](Error_Postgres_Locale_Case_Folding.md) | `lower()` không hạ chữ tiếng Việt dưới collation `C` | #23 |
-| [Error_WatermelonDB_BuildConfig_AGP9.md](Error_WatermelonDB_BuildConfig_AGP9.md) | WatermelonDB không biên dịch được dưới AGP 9 — thiếu `buildFeatures.buildConfig` | #16 |
-| [Error_Metro_Watcher_Crash_CXX_Build.md](Error_Metro_Watcher_Crash_CXX_Build.md) | Metro bundler sập khi thiếu Watchman, lẫn với lỗi "Unable to load script" | #16, #17 |
+| [Error_PostgreSQL_Service_Missing.md](docs/troubleshooting/Error_PostgreSQL_Service_Missing.md) | Service PostgreSQL 18 chưa đăng ký — chẩn đoán và cách sửa | #13 |
+| [Error_Sync_Cursor_Transaction_Timestamp.md](docs/troubleshooting/Error_Sync_Cursor_Transaction_Timestamp.md) | `now()` và `clock_timestamp()` — lỗi mất dữ liệu âm thầm ở con trỏ pull | #9, #32 |
+| [Error_Postgres_Locale_Case_Folding.md](docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md) | `lower()` không hạ chữ tiếng Việt dưới collation `C` | #23 |
+| [Error_WatermelonDB_BuildConfig_AGP9.md](docs/troubleshooting/Error_WatermelonDB_BuildConfig_AGP9.md) | WatermelonDB không biên dịch được dưới AGP 9 — thiếu `buildFeatures.buildConfig` | #16 |
+| [Error_Metro_Watcher_Crash_CXX_Build.md](docs/troubleshooting/Error_Metro_Watcher_Crash_CXX_Build.md) | Metro bundler sập khi thiếu Watchman, lẫn với lỗi "Unable to load script" | #16, #17 |
 | `Data_Requirements_*.md` | Đặc tả mô hình dữ liệu từng module, viết trước khi bắt đầu module đó | — |
-| `Error_*.md` | Mô tả lỗi → nguyên nhân gốc → cách sửa từng bước, mỗi sự cố một file | — |
+| `docs/troubleshooting/Error_*.md` | Mô tả lỗi → nguyên nhân gốc → cách sửa từng bước, mỗi sự cố một file | — |
 
 ---
 

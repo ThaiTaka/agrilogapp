@@ -54,7 +54,7 @@ describe('localNameKey', () => {
   it('hạ chữ tiếng Việt đầy đủ', () => {
     // The counterpart of the server's normalise_key. PostgreSQL's lower()
     // fails at exactly this under the C collation — see
-    // Error_Postgres_Locale_Case_Folding.md.
+    // docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md.
     expect(localNameKey('Đạm Urê Phú Mỹ')).toBe('đạm urê phú mỹ');
   });
 

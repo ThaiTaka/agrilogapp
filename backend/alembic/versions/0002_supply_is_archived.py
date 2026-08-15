@@ -21,7 +21,7 @@ Two changes to `supplies`.
    application's duplicate check never matched. name_key is folded in Python
    (NFC + casefold) and compared as bytes, which gives the same answer on
    every cluster regardless of how it was initdb'd.
-   See Error_Postgres_Locale_Case_Folding.md.
+   See docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md.
 """
 
 from __future__ import annotations

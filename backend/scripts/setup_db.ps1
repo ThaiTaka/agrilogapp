@@ -116,7 +116,7 @@ if ($collate -match '^C$|^POSIX$') {
     Write-Host "  ! This cluster uses the C collation." -ForegroundColor Yellow
     Write-Host "    Vietnamese names will sort by byte value, and PostgreSQL's" -ForegroundColor Yellow
     Write-Host "    lower() will not fold accented characters. AgriLog does not" -ForegroundColor Yellow
-    Write-Host "    rely on either (see Error_Postgres_Locale_Case_Folding.md)," -ForegroundColor Yellow
+    Write-Host "    rely on either (see docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md)," -ForegroundColor Yellow
     Write-Host "    but any new query that does will misbehave here." -ForegroundColor Yellow
 }
 

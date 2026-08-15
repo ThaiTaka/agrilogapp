@@ -15,7 +15,7 @@ computed here, stored as an ordinary column, and indexed as-is — so the
 comparison is byte equality and gives the same answer on every cluster
 regardless of how it was initdb'd.
 
-See Error_Postgres_Locale_Case_Folding.md.
+See docs/troubleshooting/Error_Postgres_Locale_Case_Folding.md.
 """
 
 from __future__ import annotations

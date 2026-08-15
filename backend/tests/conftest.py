@@ -50,7 +50,7 @@ requires_db = pytest.mark.skipif(
     _DB_UNAVAILABLE_REASON is not None,
     reason=(
         f"PostgreSQL test database unreachable ({_DB_UNAVAILABLE_REASON}). "
-        "See Error_PostgreSQL_Service_Missing.md."
+        "See docs/troubleshooting/Error_PostgreSQL_Service_Missing.md."
     ),
 )
 
